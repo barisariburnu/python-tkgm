@@ -1,0 +1,207 @@
+"""PostgreSQL Veritabanı Bağlantı ve İşlem Modülü
+
+Bu modül PostgreSQL veritabanı bağlantısını yönetir ve
+parsel verilerini kaydetme işlemlerini gerçekleştirir.
+"""
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import os
+from loguru import logger
+from dotenv import load_dotenv
+
+
+class DatabaseManager:
+    """PostgreSQL veritabanı yönetim sınıfı"""
+    
+    def __init__(self):
+        # .env dosyasını yükle
+        load_dotenv()
+        
+        self.host = os.getenv('DB_HOST')
+        self.database = os.getenv('DB_NAME')
+        self.port = int(os.getenv('DB_PORT', 5432))
+        self.user = os.getenv('DB_USER')
+        self.password = os.getenv('DB_PASSWORD')
+        
+        self.connection_string = f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
+    
+
+    def get_connection(self):
+        """Psycopg2 bağlantısı al"""
+        try:
+            conn = psycopg2.connect(
+                host=self.host,
+                database=self.database,
+                port=self.port,
+                user=self.user,
+                password=self.password,
+                cursor_factory=RealDictCursor
+            )
+            return conn
+        except Exception as e:
+            logger.error(f"Veritabanı bağlantısı kurulurken hata: {e}")
+            raise
+    
+
+    def test_connection(self) -> bool:
+        """Veritabanı bağlantısını test et"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT version();")
+                    version = cursor.fetchone()
+                    logger.info(f"Veritabanı bağlantısı başarılı: {version['version']}")
+                    return True
+        except Exception as e:
+            logger.error(f"Veritabanı bağlantı testi başarısız: {e}")
+            return False
+
+
+    def check_postgis_extension(self) -> bool:
+        """PostGIS uzantısının yüklü olup olmadığını kontrol et"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT EXISTS(
+                            SELECT 1 FROM pg_extension WHERE extname = 'postgis'
+                        );
+                    """)
+                    exists = cursor.fetchone()['exists']
+                    if exists:
+                        logger.info("PostGIS uzantısı mevcut")
+                    else:
+                        logger.warning("PostGIS uzantısı bulunamadı")
+                    return exists
+        except Exception as e:
+            logger.error(f"PostGIS kontrolü sırasında hata: {e}")
+            return False
+
+
+    def create_tables(self):
+        """Gerekli tabloları oluştur"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Parseller tablosu - tüm alanları içeren yeni yapı
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS tk_parseller (
+                            id SERIAL PRIMARY KEY,
+                            fid VARCHAR(50),
+                            parselno VARCHAR(50),
+                            adano VARCHAR(50),
+                            tapukimlikno BIGINT,
+                            tapucinsaciklama TEXT,
+                            tapuzeminref BIGINT,
+                            tapumahalleref BIGINT,
+                            tapualan DECIMAL(15,2),
+                            tip VARCHAR(100),
+                            belirtmetip VARCHAR(100),
+                            durum VARCHAR(100),
+                            geom GEOMETRY(MULTIPOLYGON, 2320),
+                            sistemkayittarihi TIMESTAMP,
+                            onaydurum INTEGER,
+                            kadastroalan DECIMAL(15,2),
+                            tapucinsid INTEGER,
+                            sistemguncellemetarihi TIMESTAMP,
+                            kmdurum VARCHAR(100),
+                            hazineparseldurum VARCHAR(100),
+                            terksebep VARCHAR(200),
+                            detayuretimyontem VARCHAR(100),
+                            orjinalgeomwkt TEXT,
+                            orjinalgeomkoordinatsistem VARCHAR(50),
+                            orjinalgeomuretimyontem VARCHAR(100),
+                            dom VARCHAR(100),
+                            epok VARCHAR(50),
+                            detayverikalite VARCHAR(100),
+                            orjinalgeomepok VARCHAR(50),
+                            parseltescildurum VARCHAR(100),
+                            olcuyontem VARCHAR(100),
+                            detayarsivonaylikoordinat VARCHAR(100),
+                            detaypaftazeminuyumluluk VARCHAR(100),
+                            tesisislemfenkayitref VARCHAR(100),
+                            terkinislemfenkayitref VARCHAR(100),
+                            yanilmasiniri DECIMAL(10,2),
+                            hesapverikalite VARCHAR(100),
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            UNIQUE(tapukimlikno, tapuzeminref)
+                        );
+                    """)
+                    
+                    # Geometri indeksleri
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_parseller_geom 
+                        ON tk_parseller USING GIST (geom);
+                    """)
+                    
+                    # Diğer indeksler
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_parseller_tapukimlikno 
+                        ON tk_parseller (tapukimlikno);
+                    """)
+                    
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_parseller_parselno 
+                        ON tk_parseller (parselno);
+                    """)
+                    
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_parseller_adano 
+                        ON tk_parseller (adano);
+                    """)
+                    
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_parseller_sistemkayittarihi 
+                        ON tk_parseller (sistemkayittarihi);
+                    """)
+                    
+                    # Sorgu geçmişi tablosu
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS tk_log (
+                            id SERIAL PRIMARY KEY,
+                            
+                            -- Sorgu parametreleri                   
+                            typename VARCHAR(100) NOT NULL,
+                            url TEXT NOT NULL,
+                            
+                            -- Sorgu sonuçları
+                            feature_count INTEGER DEFAULT 0,
+                            is_empty BOOLEAN DEFAULT FALSE,
+                            is_successful BOOLEAN DEFAULT FALSE,
+                            
+                            -- Hata bilgileri
+                            error_message TEXT,
+                            http_status_code INTEGER,
+                            
+                            -- Yanıt bilgileri
+                            response_xml TEXT,
+                            response_size INTEGER,
+                            
+                            -- Zaman bilgileri
+                            query_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            execution_duration INTERVAL,
+                            
+                            -- Ek bilgiler
+                            notes TEXT
+                        );
+                    """)
+                    
+                    # Sorgu geçmişi indeksleri
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_log_typename 
+                        ON tk_log (typename);
+                    """)
+                    
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_log_query_time 
+                        ON tk_log (query_time);
+                    """)
+                    
+                    conn.commit()
+                    logger.info("Veritabanı tabloları başarıyla oluşturuldu")
+                    
+        except Exception as e:
+            logger.error(f"Tablo oluşturma sırasında hata: {e}")
+            raise
