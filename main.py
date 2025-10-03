@@ -106,10 +106,108 @@ class TKGMScraper:
         self.running = False
 
 
+    def sync_districts(self):
+        """İlçe verilerini senkronize et"""
+        logger.info("İlçe verilerini senkronize etme işlemi başlatılıyor...")
+        client = TKGMClient(typename=os.getenv('İLÇELER', 'TKGM:ilceler'))
+        content = client.fetch_features()
+        
+        if content is None:
+            logger.error("TKGM servisinden ilçe verisi alınamadı")
+            return
+        
+        processor = WFSGeometryProcessor()
+        
+        try:
+            # XML'i parse et
+            feature_members = processor.parse_wfs_xml(content)
+            logger.info(f"{len(feature_members)} ilçe bulundu")
+            
+            # Tüm features'ları toplamak için ana liste
+            all_features = []
+            
+            # Process each feature member
+            for i, feature_member in enumerate(feature_members):
+                try:
+                    # Find mahalleler elements
+                    elements = []
+                    for child in feature_member:
+                        if 'ilceler' in child.tag:
+                            elements.append(child)
+                    
+                    # Her feature_member için features işle
+                    for elem in elements:
+                        try:
+                            # Extract FID from ilceler element
+                            fid_full = elem.get('fid', '')
+                            fid_value = None
+                            if fid_full and '.' in fid_full:
+                                fid_value = fid_full.split('.')[-1]
+                            
+                            # Initialize feature data with all TKGM fields
+                            feature = {
+                                'fid': fid_value,
+                                'tapukimlikno': None,
+                                'ilref': None,
+                                'ad': None,
+                                'durum': None,
+                            }
+                            
+                            # Extract all feature attributes
+                            for child in elem:
+                                tag_name = child.tag.split('}')[-1]  # Remove namespace
+                                if tag_name == 'tapukimlikno':
+                                    feature['tapukimlikno'] = child.text
+                                elif tag_name == 'ilref':
+                                    feature['ilref'] = child.text
+                                elif tag_name == 'ad':
+                                    feature['ad'] = child.text
+                                elif tag_name == 'durum':
+                                    feature['durum'] = child.text
+                            
+                            # Process geometry
+                            geom = processor.process_geometry_element(elem=elem)
+                            if geom and geom.get('wkt'):
+                                feature['wkt'] = geom['wkt']
+                                all_features.append(feature)
+                            
+                        except Exception as e:
+                            logger.error(f"Öğe işlenirken hata oluştu: {e}")
+                            continue
+            
+                except Exception as e:
+                    logger.error(f"Özellik üyesi {i+1} işlenirken hata oluştu: {e}")
+                    continue
+            
+            logger.info(f"Toplam {len(all_features)} geometri başarıyla işlendi")
+                
+            if not all_features:
+                logger.info("İlçe verisi bulunamadı")
+                return True
+            
+            features_count = len(all_features)
+            logger.info(f"{features_count} ilçe özelliği çekildi")
+            
+            # Veritabanına kaydet
+            if all_features:
+                db = DatabaseManager()
+                try:
+                    db.insert_districts(all_features)
+                    logger.info(f"{len(all_features)} ilçe veritabanına kaydedildi")
+                except Exception as e:
+                    logger.error(f"Veritabanına kaydetme hatası: {e}")
+            else:
+                logger.info("Kaydedilecek ilçe verisi bulunamadı")
+                
+        except Exception as e:
+            logger.error(f"İlçe verilerini işlerken hata: {e}")
+            return
+
+
     def sync_neighbourhoods(self):
         """Mahalle verilerini senkronize et"""
         logger.info("Mahalle verilerini senkronize etme işlemi başlatılıyor...")
-        client = TKGMClient(typename=os.getenv('MAHALLELER'))
+        client = TKGMClient(typename=os.getenv('MAHALLELER', 'TKGM:mahalleler'))
         content = client.fetch_features()
         
         if content is None:
@@ -228,15 +326,18 @@ def main():
         args = parser.parse_args()
 
         if args.daily:
-            scraper.sync_daily_parcels()
+            pass
+            # scraper.sync_daily_parcels()
         elif args.full:
-            scraper.sync_fully_parcels()
+            pass
+            # scraper.sync_fully_parcels()
         elif args.neighbourhoods:
             scraper.sync_neighbourhoods()
         elif args.districts:
             scraper.sync_districts()
         elif args.stats:
-            scraper.show_stats()
+            pass
+            # scraper.show_stats()
         else:
             parser.print_help()
 

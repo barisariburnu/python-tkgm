@@ -126,6 +126,9 @@ class TKGMClient:
                 # HTTP durum kodunu kontrol et
                 response.raise_for_status()
                 
+                # UTF-8 kodlamasını zorla belirt
+                response.encoding = 'utf-8'
+                
                 # Yanıt içeriğini al
                 content = response.text
                 metadata['response_size'] = len(content)

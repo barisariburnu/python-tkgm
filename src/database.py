@@ -265,6 +265,97 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Tablo oluşturma sırasında hata: {e}")
             raise
+
+    
+    def insert_districts(self, features: List[Dict[str, Any]]) -> int:
+        """Mahalle verilerini veritabanına kaydet"""
+        if not features:
+            logger.warning("Kayıt yapılacak ilçe verisi bulunamadı")
+            return 0
+
+        saved_count = 0
+        skipped_count = 0
+        error_count = 0
+        
+        for feature in features:
+            geom = None
+
+            try:
+                # Gerekli alanları kontrol et
+                if 'fid' not in feature or not feature['fid']:
+                    logger.warning(f"İlçe fid değeri eksik, atlanıyor: {feature}")
+                    skipped_count += 1
+                    continue
+
+                # Geometri verilerini oluştur
+                try:
+                    # İlçe geometri verilerini kontrol et
+                    if 'wkt' in feature and isinstance(feature['wkt'], str):
+                        # GML Parser'dan gelen geometri verilerini kullan
+                        geom = feature.get('wkt')
+                        
+                        # Geometri verilerinin geçerli olduğunu kontrol et
+                        if not geom:
+                            raise ValueError("Geçerli geometri verileri bulunamadı")
+                except Exception as e:
+                    logger.error(f"Geometri oluşturulurken hata: {e}")
+                    logger.warning(f"İlçe geometri değeri oluşturulamadı, atlanıyor: {feature}")
+                    skipped_count += 1
+                    continue
+
+                # Her ilçe için ayrı transaction kullan
+                try:
+                    with self.get_connection() as conn:
+                        with conn.cursor() as cursor:
+                            # tk_ilceler tablosuna ekle/güncelle
+                            cursor.execute("""
+                            INSERT INTO tk_ilceler (fid, tapukimlikno, ilref, ad, durum, geom)
+                            VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s, 2320))
+                            ON CONFLICT (tapukimlikno) DO UPDATE SET
+                                fid = EXCLUDED.fid,
+                                ilref = EXCLUDED.ilref,
+                                ad = EXCLUDED.ad,
+                                durum = EXCLUDED.durum,
+                                geom = ST_GeomFromText(%s, 2320)
+                            """, (
+                                feature.get('fid'),
+                                feature.get('tapukimlikno', 0),
+                                feature.get('ilref', 0),
+                                feature.get('ad', ''),
+                                feature.get('durum', 0),
+                                geom,
+                                geom
+                            ))
+
+                            conn.commit()
+                            cursor.close()
+                            saved_count += 1
+                        
+                except Exception as e:
+                    logger.error(f"İlçe kaydedilirken hata: {e}")
+                    import traceback
+                    logger.error(f"Hata detayı: {traceback.format_exc()}")
+                    logger.debug(f"Hatalı ilçe fid: {feature.get('fid', 'N/A')}, ad: {feature.get('ad', 'N/A')}")
+                    error_count += 1
+                    # Tek bir ilçe hatası tüm işlemi durdurmaz, devam et
+                    continue
+                    
+            except Exception as e:
+                logger.error(f"İlçe işlenirken hata: {e}")
+                error_count += 1
+                continue
+        
+        logger.info(f"{saved_count} ilçe başarıyla veritabanına kaydedildi")
+        
+        if skipped_count > 0:
+            logger.warning(f"{skipped_count} ilçe atlandı (eksik veri)")
+        if error_count > 0:
+            logger.warning(f"{error_count} ilçe hata nedeniyle kaydedilemedi")
+        
+        logger.info(f"Toplam işlenen: {len(features)}, Kaydedilen: {saved_count}, Atlanan: {skipped_count}, Hatalı: {error_count}")
+
+        return saved_count
+
     
     def insert_neighbourhoods(self, features: List[Dict[str, Any]]) -> int:
         """Mahalle verilerini veritabanına kaydet"""

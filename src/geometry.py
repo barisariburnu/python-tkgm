@@ -88,7 +88,11 @@ class WFSGeometryProcessor:
     def parse_wfs_xml(self, xml_content: str) -> ET.Element:
         """WFS XML içeriğini ayrıştırır."""
         try:
-            root = ET.fromstring(xml_content)
+            # XML içeriğinin UTF-8 olarak kodlandığından emin ol
+            if isinstance(xml_content, bytes):
+                xml_content = xml_content.decode('utf-8')
+            
+            root = ET.fromstring(xml_content.encode('utf-8'))
             feature_members = root.findall('.//{http://www.opengis.net/gml}featureMember')
             
             logger.info(f"WFS XML başarıyla ayrıştırıldı: {len(feature_members)} feature member bulundu")
