@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-WFS Geometry Parser and Coordinate Transformer
+WFS Geometri Ayrıştırıcısı ve Koordinat Dönüştürücüsü
 
-This script parses WFS FeatureCollection responses, extracts geometry data,
-transforms coordinates from EPSG:4326 to EPSG:2320, and converts to WKT format.
+Bu betik WFS FeatureCollection yanıtlarını ayrıştırır, geometri verilerini çıkarır,
+koordinatları EPSG:4326'dan EPSG:2320'ye dönüştürür ve WKT formatına çevirir.
 
-Dependencies:
+Bağımlılıklar:
     pip install shapely pyproj
-
-Author: Geospatial Data Processing Expert
 """
 
 from loguru import logger
@@ -16,85 +14,92 @@ from typing import List, Dict, Tuple
 from xml.etree import ElementTree as ET
 
 try:
-    from shapely.geometry import Polygon, MultiPolygon, Point, LineString, MultiPoint, MultiLineString
+    from shapely.geometry import Polygon, MultiPolygon, Point, LineString, MultiLineString
     from shapely.wkt import dumps as wkt_dumps
     SHAPELY_AVAILABLE = True
 except ImportError:
     SHAPELY_AVAILABLE = False
-    logger.error("Shapely is required but not available")
+    logger.error("Shapely gerekli ancak mevcut değil")
 
 try:
     from pyproj import Transformer
     PYPROJ_AVAILABLE = True
 except ImportError:
     PYPROJ_AVAILABLE = False
-    logger.error("PyProj is required but not available")
+    logger.error("PyProj gerekli ancak mevcut değil")
 
 
 class WFSGeometryProcessor:
     """
-    A class to process WFS FeatureCollection responses and transform geometries.
+    WFS FeatureCollection yanıtlarını işlemek ve geometrileri dönüştürmek için bir sınıf.
     """
     
     def __init__(self, source_crs: str = "EPSG:4326", target_crs: str = "EPSG:2320"):
         """
-        Initialize the processor with source and target coordinate systems.
+        İşlemciyi kaynak ve hedef koordinat sistemleri ile başlatır.
         """
         self.source_crs = source_crs
         self.target_crs = target_crs
         self.transformer = None
         
-        # Set up logging
+        # XML ad alanlarını tanımla
+        self.namespaces = {
+            'gml': 'http://www.opengis.net/gml',
+            'wfs': 'http://www.opengis.net/wfs',
+            'tkgm': 'http://tkgm.gov.tr'
+        }
+        
+        # Günlükleme ayarla
         logger.info("WFSGeometryProcessor başlatıldı")
         
-        # Check dependencies
+        # Bağımlılıkları kontrol et
         self._check_dependencies()
         
-        # Initialize coordinate transformer
+        # Koordinat dönüştürücüsünü başlat
         self._initialize_transformer()
     
     def _check_dependencies(self) -> None:
-        """Check if required dependencies are available."""
+        """Gerekli bağımlılıkların mevcut olup olmadığını kontrol eder."""
         missing_deps = []        
                 
-        # Check dependencies
+        # Bağımlılıkları kontrol et
         if not SHAPELY_AVAILABLE:
             missing_deps.append("shapely")
         if not PYPROJ_AVAILABLE:
             missing_deps.append("pyproj")
             
         if missing_deps:
-            raise ImportError(f"Missing required dependencies: {', '.join(missing_deps)}")
+            raise ImportError(f"Eksik gerekli bağımlılıklar: {', '.join(missing_deps)}")
     
     
     def _initialize_transformer(self) -> None:
-        """Initialize the coordinate transformer."""
+        """Koordinat dönüştürücüsünü başlatır."""
         try:
             self.transformer = Transformer.from_crs(
                 self.source_crs, 
                 self.target_crs, 
                 always_xy=True
             )
-            logger.info(f"Initialized transformer from {self.source_crs} to {self.target_crs}")
+            logger.info(f"Dönüştürücü başlatıldı: {self.source_crs} -> {self.target_crs}")
         except Exception as e:
-            logger.error(f"Failed to initialize transformer: {e}")
+            logger.error(f"Dönüştürücü başlatılamadı: {e}")
             raise
     
     def parse_wfs_xml(self, xml_content: str) -> ET.Element:
-        """Parse WFS XML content."""
+        """WFS XML içeriğini ayrıştırır."""
         try:
             root = ET.fromstring(xml_content)
             feature_members = root.findall('.//{http://www.opengis.net/gml}featureMember')
             
-            logger.info("Successfully parsed WFS XML")
+            logger.info(f"WFS XML başarıyla ayrıştırıldı: {len(feature_members)} feature member bulundu")
             return feature_members
             
         except Exception as e:
-            logger.error(f"Failed to parse XML: {e}")
-            raise Exception(f"XML parsing failed: {e}")
+            logger.error(f"XML ayrıştırma başarısız: {e}")
+            raise Exception(f"XML ayrıştırma başarısız: {e}")
     
     def extract_coordinates_from_string(self, coord_string: str) -> List[Tuple[float, float]]:
-        """Extract coordinate pairs from GML coordinate string."""
+        """GML koordinat dizesinden koordinat çiftlerini çıkarır."""
         try:
             coord_pairs = coord_string.strip().split()
             coordinates = []
@@ -109,11 +114,11 @@ class WFSGeometryProcessor:
             return coordinates
             
         except Exception as e:
-            logger.error(f"Failed to extract coordinates from string: {e}")
-            raise ValueError(f"Invalid coordinate string format: {coord_string}")
+            logger.error(f"Koordinat dizesinden koordinat çıkarma başarısız: {e}")
+            raise ValueError(f"Geçersiz koordinat dizesi formatı: {coord_string}")
     
     def transform_coordinates(self, coordinates: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
-        """Transform coordinates from source CRS to target CRS."""
+        """Koordinatları kaynak CRS'den hedef CRS'ye dönüştürür."""
         try:
             transformed_coords = []
             
@@ -124,26 +129,26 @@ class WFSGeometryProcessor:
             return transformed_coords
             
         except Exception as e:
-            logger.error(f"Coordinate transformation failed: {e}")
-            raise Exception(f"Failed to transform coordinates: {e}")
+            logger.error(f"Koordinat dönüştürme başarısız: {e}")
+            raise Exception(f"Koordinat dönüştürme başarısız: {e}")
            
     
     def create_wkt_from_rings(self, geom_type: str, rings: List[List[Tuple[float, float]]]) -> str:
         """
-        Create WKT representation from coordinate rings based on geometry type.
+        Geometri tipine göre koordinat halkalarından WKT temsili oluşturur.
         
         Args:
-            geom_type: Original geometry type from GML  
-            rings: List of coordinate rings
+            geom_type: GML'den gelen orijinal geometri tipi  
+            rings: Koordinat halkaları listesi
             
         Returns:
-            WKT string representation
+            WKT dize temsili
         """
         try:
             if not rings:
-                raise ValueError("No coordinate rings provided")
+                raise ValueError("Koordinat halkası sağlanmadı")
             
-            # Handle different geometry types
+            # Farklı geometri tiplerini işle
             if geom_type == 'Point':
                 if rings and rings[0]:
                     point = Point(rings[0][0])
@@ -163,22 +168,22 @@ class WFSGeometryProcessor:
                     return wkt_dumps(polygon)
             
             elif geom_type == 'MultiPolygon':
-                # For MultiPolygon, create individual polygons from each ring
+                # MultiPolygon için, her halkadan ayrı poligonlar oluştur
                 polygons = []
                 for ring in rings:
-                    if len(ring) >= 4:  # At least 4 points for a closed polygon
+                    if len(ring) >= 4:  # Kapalı poligon için en az 4 nokta
                         polygons.append(Polygon(ring))
                 
                 if polygons:
                     if len(polygons) == 1:
-                        # If only one polygon, return as POLYGON
+                        # Sadece bir poligon varsa, POLYGON olarak döndür
                         return wkt_dumps(polygons[0])
                     else:
-                        # Multiple polygons, return as MULTIPOLYGON
+                        # Birden fazla poligon, MULTIPOLYGON olarak döndür
                         multipolygon = MultiPolygon(polygons)
                         return wkt_dumps(multipolygon)
             
-            # Fallback: assume polygon
+            # Yedek: poligon olarak varsay
             if rings and len(rings[0]) >= 3:
                 if len(rings) == 1:
                     polygon = Polygon(rings[0])
@@ -192,8 +197,8 @@ class WFSGeometryProcessor:
                         return wkt_dumps(multipolygon)
                         
         except Exception as e:
-            logger.error(f"Failed to create WKT from rings: {e}")
-            # Manual fallback
+            logger.error(f"Halkalardan WKT oluşturma başarısız: {e}")
+            # Manuel yedek
             if len(rings) == 1:
                 coord_pairs = [f"{x} {y}" for x, y in rings[0]]
                 return f"POLYGON(({', '.join(coord_pairs)}))"
@@ -204,38 +209,38 @@ class WFSGeometryProcessor:
                     polygon_parts.append(f"(({', '.join(coord_pairs)}))")
                 return f"MULTIPOLYGON({', '.join(polygon_parts)})"
         
-        raise ValueError(f"Could not create WKT for geometry type {geom_type}")
+        raise ValueError(f"{geom_type} geometri tipi için WKT oluşturulamadı")
     
     def process_parcel_wfs_response(self, xml_content: str) -> List[Dict]:
-        """Process complete WFS response and return transformed geometries."""
+        """Tam WFS yanıtını işler ve dönüştürülmüş geometrileri döndürür."""
         results = []
         
         try:
-            # Parse XML
+            # XML'i ayrıştır
             root = self.parse_wfs_xml(xml_content)
             
-            # Find all feature members
+            # Tüm özellik üyelerini bul
             feature_members = root.findall('.//{http://www.opengis.net/gml}featureMember')
             
-            logger.info(f"Found {len(feature_members)} feature members")
+            logger.info(f"{len(feature_members)} feature member bulundu")
             
-            # Process each feature member
+            # Her feature memberi işle
             for i, feature_member in enumerate(feature_members):
                 try:
-                    # Find parseller elements
+                    # Parseller öğelerini bul
                     parcel_elements = []
                     for child in feature_member:
                         if 'parseller' in child.tag:
                             parcel_elements.append(child)
                     
                     for parcel_elem in parcel_elements:
-                        # Extract FID from parseller element
+                        # Parseller öğesinden FID'yi çıkar
                         fid_full = parcel_elem.get('fid', '')
                         fid_value = None
                         if fid_full and '.' in fid_full:
                             fid_value = fid_full.split('.')[-1]
                         
-                        # Initialize feature data with all TKGM fields
+                        # Tüm TKGM alanları ile özellik verilerini başlat
                         feature_data = {
                             'fid': fid_value,
                             'parselno': None,
@@ -256,9 +261,9 @@ class WFSGeometryProcessor:
                             'hazineparseldurum': None,
                         }
                         
-                        # Extract all feature attributes
+                        # Tüm özellik niteliklerini çıkar
                         for child in parcel_elem:
-                            tag_name = child.tag.split('}')[-1]  # Remove namespace
+                            tag_name = child.tag.split('}')[-1]  # Ad alanını kaldır
                             if tag_name == 'parselno':
                                 feature_data['parselno'] = child.text
                             elif tag_name == 'adano':
@@ -292,22 +297,22 @@ class WFSGeometryProcessor:
                             elif tag_name == 'hazineparseldurum':
                                 feature_data['hazineparseldurum'] = child.text
                         
-                        # Find and process geometry elements (prioritize MultiPolygon over Polygon)
+                        # Geometri öğelerini bul ve işle (MultiPolygon'u Polygon'dan önceliklendir)
                         geometry_found = False
                         geometry_types = ['MultiPolygon', 'Polygon', 'Point', 'LineString', 'MultiPoint', 'MultiLineString']
                         
                         for geom_type in geometry_types:
                             if geometry_found:
-                                break  # Only process the first geometry type found
+                                break  # Sadece bulunan ilk geometri tipini işle
 
-                            geom_elements = parcel_elem.findall(f'.//{{{namespaces["gml"]}}}{geom_type}')
+                            geom_elements = parcel_elem.findall(f'.//{{{self.namespaces["gml"]}}}{geom_type}')
                             
                             for geom_elem in geom_elements:
                                 try:
-                                    # Process the geometry element
+                                    # Geometri öğesini işle
                                     geometry_data = self.process_geometry_element(geom_elem)
                                     
-                                    # Create result dictionary
+                                    # Sonuç sözlüğü oluştur
                                     result = {
                                         **feature_data,
                                         'geometry_type': geometry_data['geometry_type'],
@@ -324,57 +329,57 @@ class WFSGeometryProcessor:
                                     results.append(result)
                                     geometry_found = True
                                     
-                                    logger.info(f"Processed {geometry_data['geometry_type']} - Feature {i+1}: Parsel {feature_data['parselno']}, FID: {fid_value}, Rings: {geometry_data['rings_count']}")
-                                    break  # Only process the first geometry element of this type
+                                    logger.info(f"{geometry_data['geometry_type']} işlendi - Özellik {i+1}: Parsel {feature_data['parselno']}, FID: {fid_value}, Halkalar: {geometry_data['rings_count']}")
+                                    break  # Bu tipte sadece ilk geometri öğesini işle
                                     
                                 except Exception as e:
-                                    logger.error(f"Failed to process {geom_type} geometry: {e}")
+                                    logger.error(f"{geom_type} geometrisi işlenirken hata oluştu: {e}")
                                     continue
                         
                         if not geometry_found:
-                            logger.warning(f"No supported geometry found for feature {i+1}: Parsel {feature_data['parselno']}")
+                            logger.warning(f"Özellik {i+1} için desteklenen geometri bulunamadı: Parsel {feature_data['parselno']}")
                             
                 except Exception as e:
-                    logger.error(f"Failed to process feature member {i+1}: {e}")
+                    logger.error(f"Feature member {i+1} işlenirken hata oluştu: {e}")
                     continue
             
-            logger.info(f"Successfully processed {len(results)} geometries")
+            logger.info(f"Toplam {len(results)} geometri başarıyla işlendi")
             return results
             
         except Exception as e:
-            logger.error(f"Failed to process WFS response: {e}")
+            logger.error(f"WFS yanıtı işlenirken hata oluştu: {e}")
             raise
     
     def process_district_wfs_response(self, xml_content: str) -> List[Dict]:
-        """Process complete WFS response and return transformed geometries."""
+        """Tam WFS yanıtını işler ve dönüştürülmüş geometrileri döndürür."""
         results = []
         
         try:
-            # Parse XML
+            # XML'i ayrıştır
             root = self.parse_wfs_xml(xml_content)
             
-            # Find all feature members
+            # Tüm özellik üyelerini bul
             feature_members = root.findall('.//{http://www.opengis.net/gml}featureMember')
             
-            logger.info(f"Found {len(feature_members)} feature members")
+            logger.info(f"{len(feature_members)} feature member bulundu")
             
-            # Process each feature member
+            # Her feature memberi işle
             for i, feature_member in enumerate(feature_members):
                 try:
-                    # Find ilceler elements
+                    # İlçeler öğelerini bul
                     district_elements = []
                     for child in feature_member:
                         if 'ilceler' in child.tag:
                             district_elements.append(child)
                     
                     for district_elem in district_elements:
-                        # Extract FID from ilceler element
+                        # İlçeler öğesinden FID'yi çıkar
                         fid_full = district_elem.get('fid', '')
                         fid_value = None
                         if fid_full and '.' in fid_full:
                             fid_value = fid_full.split('.')[-1]
                         
-                        # Initialize feature data with all TKGM fields
+                        # Tüm TKGM alanları ile özellik verilerini başlat
                         feature_data = {
                             'fid': fid_value,
                             'tapukimlikno': None,
@@ -383,9 +388,9 @@ class WFSGeometryProcessor:
                             'durum': None,
                         }
                         
-                        # Extract all feature attributes
+                        # Tüm özellik niteliklerini çıkar
                         for child in district_elem:
-                            tag_name = child.tag.split('}')[-1]  # Remove namespace
+                            tag_name = child.tag.split('}')[-1]  # Ad alanını kaldır
                             if tag_name == 'tapukimlikno':
                                 feature_data['tapukimlikno'] = child.text
                             elif tag_name == 'ilref':
@@ -395,22 +400,22 @@ class WFSGeometryProcessor:
                             elif tag_name == 'durum':
                                 feature_data['durum'] = child.text
                         
-                        # Find and process geometry elements (prioritize MultiPolygon over Polygon)
+                        # Geometri öğelerini bul ve işle (MultiPolygon'u Polygon'dan önceliklendir)
                         geometry_found = False
                         geometry_types = ['MultiPolygon', 'Polygon', 'Point', 'LineString', 'MultiPoint', 'MultiLineString']
                         
                         for geom_type in geometry_types:
                             if geometry_found:
-                                break  # Only process the first geometry type found
+                                break  # Sadece bulunan ilk geometri tipini işle
                                 
-                            geom_elements = district_elem.findall(f'.//{{{namespaces["gml"]}}}{geom_type}')
+                            geom_elements = district_elem.findall(f'.//{{{self.namespaces["gml"]}}}{geom_type}')
                             
                             for geom_elem in geom_elements:
                                 try:
-                                    # Process the geometry element
+                                    # Geometri öğesini işle
                                     geometry_data = self.process_geometry_element(geom_elem)
                                     
-                                    # Create result dictionary
+                                    # Sonuç sözlüğü oluştur
                                     result = {
                                         **feature_data,
                                         'geometry_type': geometry_data['geometry_type'],
@@ -427,172 +432,58 @@ class WFSGeometryProcessor:
                                     results.append(result)
                                     geometry_found = True
                                     
-                                    logger.info(f"Processed {geometry_data['geometry_type']} - Feature {i+1}: İlçe {feature_data['ad']}, FID: {fid_value}, Rings: {geometry_data['rings_count']}")
-                                    break  # Only process the first geometry element of this type
+                                    logger.info(f"{geometry_data['geometry_type']} işlendi - Özellik {i+1}: İlçe {feature_data['ad']}, FID: {fid_value}, Halkalar: {geometry_data['rings_count']}")
+                                    break  # Bu tipte sadece ilk geometri öğesini işle
                                     
                                 except Exception as e:
-                                    logger.error(f"Failed to process {geom_type} geometry: {e}")
+                                    logger.error(f"{geom_type} geometrisi işlenirken hata oluştu: {e}")
                                     continue
                         
                         if not geometry_found:
-                            logger.warning(f"No supported geometry found for feature {i+1}: Parsel {feature_data['parselno']}")
+                            logger.warning(f"Özellik {i+1} için desteklenen geometri bulunamadı: İlçe {feature_data['ad']}")
                             
                 except Exception as e:
-                    logger.error(f"Failed to process feature member {i+1}: {e}")
+                    logger.error(f"Feature member {i+1} işlenirken hata oluştu: {e}")
                     continue
             
-            logger.info(f"Successfully processed {len(results)} geometries")
+            logger.info(f"Toplam {len(results)} geometri başarıyla işlendi")
             return results
             
         except Exception as e:
-            logger.error(f"Failed to process WFS response: {e}")
-            raise
-    
-    def process_neighbourhood_wfs_response(self, xml_content: str) -> List[Dict]:
-        """Process complete WFS response and return transformed geometries."""
-        results = []
-        
-        try:
-            # Parse XML
-            root = self.parse_wfs_xml(xml_content)
-            
-            # Find all feature members
-            feature_members = root.findall('.//{http://www.opengis.net/gml}featureMember')
-            
-            logger.info(f"Found {len(feature_members)} feature members")
-            
-            # Process each feature member
-            for i, feature_member in enumerate(feature_members):
-                try:
-                    # Find mahalleler elements
-                    neighbourhood_elements = []
-                    for child in feature_member:
-                        if 'mahalleler' in child.tag:
-                            neighbourhood_elements.append(child)
-                    
-                    for neighbourhood_elem in neighbourhood_elements:
-                        # Extract FID from mahalleler element
-                        fid_full = neighbourhood_elem.get('fid', '')
-                        fid_value = None
-                        if fid_full and '.' in fid_full:
-                            fid_value = fid_full.split('.')[-1]
-                        
-                        # Initialize feature data with all TKGM fields
-                        feature_data = {
-                            'fid': fid_value,
-                            'ilceref': None,
-                            'tapukimlikno': None,
-                            'durum': None,
-                            'sistemkayittarihi': None,
-                            'tip': None,
-                            'tapumahallead': None,
-                            'kadastromahallead': None
-                        }
-                        
-                        # Extract all feature attributes
-                        for child in neighbourhood_elem:
-                            tag_name = child.tag.split('}')[-1]  # Remove namespace
-                            if tag_name == 'ilceref':
-                                feature_data['ilceref'] = child.text
-                            elif tag_name == 'tapukimlikno':
-                                feature_data['tapukimlikno'] = child.text
-                            elif tag_name == 'durum':
-                                feature_data['durum'] = child.text
-                            elif tag_name == 'sistemkayittarihi':
-                                feature_data['sistemkayittarihi'] = child.text
-                            elif tag_name == 'tip':
-                                feature_data['tip'] = child.text
-                            elif tag_name == 'tapumahallead':
-                                feature_data['tapumahallead'] = child.text
-                            elif tag_name == 'kadastromahallead':
-                                feature_data['kadastromahallead'] = child.text
-                        
-                        # Find and process geometry elements (prioritize MultiPolygon over Polygon)
-                        geometry_found = False
-                        geometry_types = ['MultiPolygon', 'Polygon', 'Point', 'LineString', 'MultiPoint', 'MultiLineString']
-                        
-                        for geom_type in geometry_types:
-                            if geometry_found:
-                                break  # Only process the first geometry type found
-                                
-                            geom_elements = neighbourhood_elem.findall(f'.//{{{namespaces["gml"]}}}{geom_type}')
-                            
-                            for geom_elem in geom_elements:
-                                try:
-                                    # Process the geometry element
-                                    geometry_data = self.process_geometry_element(geom_elem)
-                                    
-                                    # Create result dictionary
-                                    result = {
-                                        **feature_data,
-                                        'geometry_type': geometry_data['geometry_type'],
-                                        'rings_count': geometry_data['rings_count'],
-                                        'original_coords': geometry_data['original_rings'][0] if geometry_data['original_rings'] else [],
-                                        'transformed_coords': geometry_data['transformed_rings'][0] if geometry_data['transformed_rings'] else [],
-                                        'all_original_rings': geometry_data['original_rings'],
-                                        'all_transformed_rings': geometry_data['transformed_rings'],
-                                        'original_crs': self.source_crs,
-                                        'target_crs': self.target_crs,
-                                        'wkt': geometry_data['wkt']
-                                    }
-                                    
-                                    results.append(result)
-                                    geometry_found = True
-                                    
-                                    logger.info(f"Processed {geometry_data['geometry_type']} - Feature {i+1}: Tapu Kimlik No: {feature_data['tapukimlikno']}, FID: {fid_value}, Rings: {geometry_data['rings_count']}")
-                                    break  # Only process the first geometry element of this type
-                                    
-                                except Exception as e:
-                                    logger.error(f"Failed to process {geom_type} geometry: {e}")
-                                    continue
-                        
-                        if not geometry_found:
-                            logger.warning(f"No supported geometry found for feature {i+1}: Parsel {feature_data['parselno']}")
-                            
-                except Exception as e:
-                    logger.error(f"Failed to process feature member {i+1}: {e}")
-                    continue
-            
-            logger.info(f"Successfully processed {len(results)} geometries")
-            return results
-            
-        except Exception as e:
-            logger.error(f"Failed to process WFS response: {e}")
-            raise
-    
+            logger.error(f"WFS yanıtı işlenirken hata oluştu: {e}")
+            raise    
 
     def process_geometry_element(self, elem):
-        """Process a single geometry element and return its details"""
-        # Find and process geometry elements (prioritize MultiPolygon over Polygon)
+        """Tek bir geometri öğesini işler ve detaylarını döndürür"""
+        # Geometri öğelerini bul ve işle (MultiPolygon'u Polygon'dan önceliklendir)
         geometry_found = False
         geometry_types = ['MultiPolygon', 'Polygon', 'Point', 'LineString', 'MultiPoint', 'MultiLineString']
-        geometry = []
         
         for geom_type in geometry_types:
             if geometry_found:
-                break  # Only process the first geometry type found
+                break  # Sadece bulunan ilk geometri tipini işle
                 
-            geom_elements = elem.findall(f'.//{{{namespaces["gml"]}}}{geom_type}')
+            geom_elements = elem.findall(f'.//{{{self.namespaces["gml"]}}}{geom_type}')
             
             for geom_elem in geom_elements:
                 try:
-                    # Get geometry type from element tag
-                    geom_type = geom_elem.tag.split('}')[-1]  # Remove namespace
+                    # Öğe etiketinden geometri tipini al
+                    geom_type = geom_elem.tag.split('}')[-1]  # Ad alanını kaldır
                     
-                    # Find all coordinate elements within this geometry
+                    # Bu geometri içindeki tüm koordinat öğelerini bul
                     coord_elements = geom_elem.findall('.//{http://www.opengis.net/gml}coordinates')
                     
-                    # Extract all coordinate rings
+                    # Tüm koordinat halkalarını çıkar
                     all_original_rings = []
                     all_transformed_rings = []
                     
                     for coord_elem in coord_elements:
                         if coord_elem.text:
-                            # Extract coordinates from this ring
+                            # Bu halkadan koordinatları çıkar
                             original_coords = self.extract_coordinates_from_string(coord_elem.text)
                             transformed_coords = self.transform_coordinates(original_coords)
                             
-                            # Ensure ring is closed for polygons
+                            # Poligonlar için halkanın kapalı olduğundan emin ol
                             if geom_type in ['MultiPolygon', 'Polygon'] and len(transformed_coords) >= 3:
                                 if transformed_coords[0] != transformed_coords[-1]:
                                     transformed_coords.append(transformed_coords[0])
@@ -601,34 +492,28 @@ class WFSGeometryProcessor:
                             all_original_rings.append(original_coords)
                             all_transformed_rings.append(transformed_coords)
                     
-                    # Create appropriate WKT based on geometry type and number of rings
+                    # Geometri tipine ve halka sayısına göre uygun WKT oluştur
                     wkt = self.create_wkt_from_rings(geom_type, all_transformed_rings)
                                         
-                    # Create result dictionary
+                    # Sonuç sözlüğü oluştur
                     result = {
                         'geometry_type': geom_type,
                         'rings_count': len(all_transformed_rings),
-                        'original_coords': all_original_rings[0] if all_original_rings else [],
-                        'transformed_coords': all_transformed_rings[0] if all_transformed_rings else [],
-                        'all_original_rings': all_original_rings,
-                        'all_transformed_rings': all_transformed_rings,
-                        'original_crs': 'EPSG:4326',
-                        'target_crs': 'EPSG:2320',
+                        'original_rings': all_original_rings,
+                        'transformed_rings': all_transformed_rings,
+                        'original_crs': self.source_crs,
+                        'target_crs': self.target_crs,
                         'wkt': wkt
                     }
                     
-                    geometry.append(result)
                     geometry_found = True
-                    
-                    logger.info(f"Processed {geom_type} - Feature {i+1}: Tapu Kimlik No: {feature_data['tapukimlikno']}, FID: {fid_value}, Rings: {len(all_transformed_rings)}")
-                    break  # Only process the first geometry element of this type
+                    logger.debug(f"{geom_type} geometrisi işlendi: {len(all_transformed_rings)} halka")
+                    return result  # Bulunan ilk geometriyi döndür
                     
                 except Exception as e:
-                    logger.error(f"Failed to process {geom_type} geometry: {e}")
+                    logger.error(f"{geom_type} geometrisi işlenirken hata oluştu: {e}")
                     continue
                         
-            if not geometry_found:
-                logger.warning(f"No supported geometry found for feature {i+1}: Parsel {feature_data['parselno']}")
-                    
-        logger.info(f"Successfully processed {len(geometry)} geometries")    
-        return geometry
+        if not geometry_found:
+            logger.warning("Öğede desteklenen geometri bulunamadı")
+            return None

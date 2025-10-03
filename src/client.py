@@ -23,7 +23,7 @@ class TKGMClient:
         self.base_url = os.getenv('TKGM_BASE_URL')
         self.username = os.getenv('TKGM_USERNAME')
         self.password = os.getenv('TKGM_PASSWORD')
-        self.typename = typename or os.getenv('TYPENAME', 'TKGM:parseller')
+        self.typename = typename or os.getenv('PARSELLER', 'TKGM:parseller')
         self.max_features = max_features or int(os.getenv('MAXFEATURES', 1000))
         
         # HTTP oturum ayarları
@@ -31,8 +31,7 @@ class TKGMClient:
         self.session.auth = HTTPBasicAuth(self.username, self.password)
         self.session.headers.update({
             'User-Agent': 'TKGM-Python-Client/1.0',
-            'Accept': 'application/xml, text/xml',
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Accept': 'application/xml, text/xml'
         })
         
         # Timeout ve retry ayarları
@@ -40,7 +39,7 @@ class TKGMClient:
         self.max_retries = 3
         self.retry_delay = 5  # saniye
         
-        logger.info("TKGM Client başlatıldı")
+        logger.info("TKGM İstemci başlatıldı")
     
 
     def test_connection(self) -> bool:
@@ -50,17 +49,18 @@ class TKGMClient:
             
             # Minimal bir istek gönder
             test_params = {
-                'TYPENAME': self.typename,
+                'REQUEST': 'GetFeature',
+                'SERVICE': 'WFS',
+                'SRSNAME': 'EPSG:4326',
+                'VERSION': '1.1.2',
+                'TYPENAME':  os.getenv('MAHALLELER', 'TKGM:mahalleler'),
                 'MAXFEATURES': '1',
                 'STARTINDEX': '0'
             }
             
-            if '?' in self.base_url:
-                test_url = f"{self.base_url}&{urlencode(test_params)}"
-            else:
-                test_url = f"{self.base_url}?{urlencode(test_params)}"
-            
-            response = self.session.get(test_url, timeout=30)
+            test_url = f"{self.base_url}?{urlencode(test_params)}"
+            logger.info(test_url)
+            response = self.session.get(test_url, timeout=self.timeout)
             response.raise_for_status()
             
             # Yanıtın XML olup olmadığını kontrol et
@@ -79,11 +79,19 @@ class TKGMClient:
     def _build_request_params(self, start_index: int = 0, cql_filter: str = None) -> Dict[str, str]:
         """WFS istek parametrelerini oluştur"""
         params = {
+            'SERVICE': 'WFS',
+            'VERSION': '1.1.2',
+            'REQUEST': 'GetFeature',
+            'SRSNAME': 'EPSG:4326',
             'TYPENAME': self.typename,
             'MAXFEATURES': str(self.max_features),
-            'STARTINDEX': str(start_index),
-            'CQL_FILTER': str(cql_filter),
+            'STARTINDEX': str(start_index)
         }
+        
+        # CQL filtre varsa ve None/boş değilse ekle
+        if cql_filter and cql_filter.strip():
+            params['CQL_FILTER'] = cql_filter.strip()
+        
         return params
 
 
@@ -112,7 +120,6 @@ class TKGMClient:
         for attempt in range(self.max_retries):
             try:
                 logger.info(f"TKGM servisine istek gönderiliyor (Deneme {attempt + 1}/{self.max_retries})")
-                logger.debug(f"İstek URL: {url}")
         
                 response = self.session.get(url, timeout=self.timeout)
 
@@ -120,14 +127,14 @@ class TKGMClient:
                 response.raise_for_status()
                 
                 # Yanıt içeriğini al
-                response_content = response.text
-                metadata['response_size'] = len(response_content)
+                content = response.text
+                metadata['response_size'] = len(content)
                 metadata['execution_time'] = time.time() - start_time
                 metadata['success'] = True
         
-                logger.info(f"TKGM servisinden yanıt alındı: {metadata['response_size']} byte")
+                logger.info(f"TKGM servisinden yanıt alındı: {metadata['response_size']} bayt, {metadata['execution_time']:.2f} saniye")
                 
-                return response_content, metadata
+                return content
             
             except requests.exceptions.Timeout:
                 error_msg = f"İstek zaman aşımına uğradı (Deneme {attempt + 1})"

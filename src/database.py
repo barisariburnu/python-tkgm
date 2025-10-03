@@ -308,20 +308,21 @@ class DatabaseManager:
                         with conn.cursor() as cursor:
                             # tk_mahalle tablosuna ekle/güncelle
                             cursor.execute("""
-                            INSERT INTO tk_mahalle (
+                            INSERT INTO tk_mahalleler (
                                 fid, ilceref, tapukimlikno, durum, sistemkayittarihi,
                                 tip, tapumahallead, kadastromahallead, geom
                             ) VALUES (
                                 %s, %s, %s, %s, %s, %s, %s, %s, ST_GeomFromText(%s, 2320)
-                            ) ON CONFLICT (fid) DO UPDATE SET
+                            ) ON CONFLICT (tapukimlikno) DO UPDATE SET
+                                fid = EXCLUDED.fid,
                                 ilceref = EXCLUDED.ilceref,
-                                tapukimlikno = EXCLUDED.tapukimlikno,
                                 durum = EXCLUDED.durum,
                                 sistemkayittarihi = EXCLUDED.sistemkayittarihi,
                                 tip = EXCLUDED.tip,
                                 tapumahallead = EXCLUDED.tapumahallead,
                                 kadastromahallead = EXCLUDED.kadastromahallead,
-                                geom = ST_GeomFromText(%s, 2320)
+                                geom = ST_GeomFromText(%s, 2320),
+                                updated_at = CURRENT_TIMESTAMP
                             """, (
                                 feature.get('fid'),
                                 feature.get('ilceref', 0),

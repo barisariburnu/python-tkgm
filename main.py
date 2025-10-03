@@ -3,6 +3,7 @@ TKGM WFS Veri Tarayıcısı - Ana Uygulama
 Türkiye Tapu ve Kadastro Genel Müdürlüğü parsel verilerini otomatik olarak toplar
 """
 
+import dbm
 import os
 import sys
 import signal
@@ -33,7 +34,7 @@ class TKGMScraper:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         
-        logger.info("TKGM Scraper başlatıldı")
+        logger.info("TKGM Veri Tarayıcısı başlatıldı")
     
 
     def _setup_logging(self):
@@ -110,16 +111,20 @@ class TKGMScraper:
         logger.info("Mahalle verilerini senkronize etme işlemi başlatılıyor...")
         client = TKGMClient(typename=os.getenv('MAHALLELER'))
         content = client.fetch_features()
-            
-        if not content:
-            logger.warning("Mahalle verileri çekilemedi")
-            return False
+        
+        if content is None:
+            logger.error("TKGM servisinden mahalle verisi alınamadı")
+            return
+        
+        processor = WFSGeometryProcessor()
         
         try:
-            # Parse XML
-            processor = WFSGeometryProcessor()
+            # XML'i parse et
             feature_members = processor.parse_wfs_xml(content)
             logger.info(f"{len(feature_members)} mahalle bulundu")
+            
+            # Tüm features'ları toplamak için ana liste
+            all_features = []
             
             # Process each feature member
             for i, feature_member in enumerate(feature_members):
@@ -130,71 +135,82 @@ class TKGMScraper:
                         if 'mahalleler' in child.tag:
                             elements.append(child)
                     
-                    features = []
+                    # Her feature_member için features işle
                     for elem in elements:
-                        # Extract FID from mahalleler element
-                        fid_full = elem.get('fid', '')
-                        fid_value = None
-                        if fid_full and '.' in fid_full:
-                            fid_value = fid_full.split('.')[-1]
-                        
-                        # Initialize feature data with all TKGM fields
-                        feature = {
-                            'fid': fid_value,
-                            'ilceref': None,
-                            'tapukimlikno': None,
-                            'durum': None,
-                            'sistemkayittarihi': None,
-                            'tip': None,
-                            'tapumahallead': None,
-                            'kadastromahallead': None
-                        }
-                        
-                        # Extract all feature attributes
-                        for child in elem:
-                            tag_name = child.tag.split('}')[-1]  # Remove namespace
-                            if tag_name == 'ilceref':
-                                feature['ilceref'] = child.text
-                            elif tag_name == 'tapukimlikno':
-                                feature['tapukimlikno'] = child.text
-                            elif tag_name == 'durum':
-                                feature['durum'] = child.text
-                            elif tag_name == 'sistemkayittarihi':
-                                feature['sistemkayittarihi'] = child.text
-                            elif tag_name == 'tip':
-                                feature['tip'] = child.text
-                            elif tag_name == 'tapumahallead':
-                                feature['tapumahallead'] = child.text
-                            elif tag_name == 'kadastromahallead':
-                                feature['kadastromahallead'] = child.text
-                        
-                    geom = processor.process_geometry_element(elem=elem)
-                    feature['wkt'] = geom['wkt']
+                        try:
+                            # Extract FID from mahalleler element
+                            fid_full = elem.get('fid', '')
+                            fid_value = None
+                            if fid_full and '.' in fid_full:
+                                fid_value = fid_full.split('.')[-1]
+                            
+                            # Initialize feature data with all TKGM fields
+                            feature = {
+                                'fid': fid_value,
+                                'ilceref': None,
+                                'tapukimlikno': None,
+                                'durum': None,
+                                'sistemkayittarihi': None,
+                                'tip': None,
+                                'tapumahallead': None,
+                                'kadastromahallead': None
+                            }
+                            
+                            # Extract all feature attributes
+                            for child in elem:
+                                tag_name = child.tag.split('}')[-1]  # Remove namespace
+                                if tag_name == 'ilceref':
+                                    feature['ilceref'] = child.text
+                                elif tag_name == 'tapukimlikno':
+                                    feature['tapukimlikno'] = child.text
+                                elif tag_name == 'durum':
+                                    feature['durum'] = child.text
+                                elif tag_name == 'sistemkayittarihi':
+                                    feature['sistemkayittarihi'] = child.text
+                                elif tag_name == 'tip':
+                                    feature['tip'] = child.text
+                                elif tag_name == 'tapumahallead':
+                                    feature['tapumahallead'] = child.text
+                                elif tag_name == 'kadastromahallead':
+                                    feature['kadastromahallead'] = child.text
+                            
+                            # Process geometry
+                            geom = processor.process_geometry_element(elem=elem)
+                            if geom and geom.get('wkt'):
+                                feature['wkt'] = geom['wkt']
+                                all_features.append(feature)
+                            
+                        except Exception as e:
+                            logger.error(f"Öğe işlenirken hata oluştu: {e}")
+                            continue
             
                 except Exception as e:
-                    logger.error(f"Failed to process feature member {i+1}: {e}")
+                    logger.error(f"Özellik üyesi {i+1} işlenirken hata oluştu: {e}")
                     continue
             
-            logger.info(f"Successfully processed {len(features)} geometries")
+            logger.info(f"Toplam {len(all_features)} geometri başarıyla işlendi")
                 
-            if not features:
+            if not all_features:
                 logger.info("Mahalle verisi bulunamadı")
                 return True
             
-            features_count = len(features)
+            features_count = len(all_features)
             logger.info(f"{features_count} mahalle özelliği çekildi")
             
             # Veritabanına kaydet
-            db = DatabaseManager()
-            saved_count = db.insert_neighbourhoods(features)
-            logger.info(f"{saved_count} mahalle veritabanına kaydedildi")
-            return True
+            if all_features:
+                db = DatabaseManager()
+                try:
+                    db.insert_neighbourhoods(all_features)
+                    logger.info(f"{len(all_features)} mahalle veritabanına kaydedildi")
+                except Exception as e:
+                    logger.error(f"Veritabanına kaydetme hatası: {e}")
+            else:
+                logger.info("Kaydedilecek mahalle verisi bulunamadı")
                 
         except Exception as e:
-            logger.error(f"Mahalle senkronizasyonu sırasında hata: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return False
+            logger.error(f"Mahalle verilerini işlerken hata: {e}")
+            return
 
 
 def main():
@@ -211,7 +227,18 @@ def main():
     try:
         args = parser.parse_args()
 
-        scraper.sync_neighbourhoods()
+        if args.daily:
+            scraper.sync_daily_parcels()
+        elif args.full:
+            scraper.sync_fully_parcels()
+        elif args.neighbourhoods:
+            scraper.sync_neighbourhoods()
+        elif args.districts:
+            scraper.sync_districts()
+        elif args.stats:
+            scraper.show_stats()
+        else:
+            parser.print_help()
 
     except KeyboardInterrupt:
         logger.info("Uygulama kullanıcı tarafından durduruldu")
