@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 # Modülleri import et
 from src.database import DatabaseManager
 from src.client import TKGMClient
+from src.geometry import WFSGeometryProcessor
 
 
 class TKGMScraper:
@@ -107,33 +108,19 @@ class TKGMScraper:
     def sync_neighbourhoods(self):
         """Mahalle verilerini senkronize et"""
         logger.info("Mahalle verilerini senkronize etme işlemi başlatılıyor...")
-        content = self.client.sync_features(
-            layer_name=os.getenv('MAHALLELER'),
-            target_table='mahalleler',
-            cql_filter=os.getenv('CQL_FILTER')
-        )
+        client = TKGMClient(typename=os.getenv('MAHALLELER'))
+        content = client.fetch_features()
             
-        if not xml_content:
+        if not content:
             logger.warning("Mahalle verileri çekilemedi")
             return False
         
-        results = []
         try:
             # Parse XML
-            root = self.parse_wfs_xml(xml_content)
-
-            # Find all feature members
-            if LXML_AVAILABLE:
-                namespaces = {
-                    'gml': 'http://www.opengis.net/gml',
-                    'TKGM': 'http://www.tkgm.gov.tr'
-                }
-                feature_members = root.xpath('.//gml:featureMember', namespaces=namespaces)
-            else:
-                feature_members = root.findall('.//{http://www.opengis.net/gml}featureMember')
-
+            processor = WFSGeometryProcessor()
+            feature_members = processor.parse_wfs_xml(content)
             logger.info(f"{len(feature_members)} mahalle bulundu")
-
+            
             # Process each feature member
             for i, feature_member in enumerate(feature_members):
                 try:
@@ -143,6 +130,7 @@ class TKGMScraper:
                         if 'mahalleler' in child.tag:
                             elements.append(child)
                     
+                    features = []
                     for elem in elements:
                         # Extract FID from mahalleler element
                         fid_full = elem.get('fid', '')
@@ -151,7 +139,7 @@ class TKGMScraper:
                             fid_value = fid_full.split('.')[-1]
                         
                         # Initialize feature data with all TKGM fields
-                        feature_data = {
+                        feature = {
                             'fid': fid_value,
                             'ilceref': None,
                             'tapukimlikno': None,
@@ -166,76 +154,47 @@ class TKGMScraper:
                         for child in elem:
                             tag_name = child.tag.split('}')[-1]  # Remove namespace
                             if tag_name == 'ilceref':
-                                feature_data['ilceref'] = child.text
+                                feature['ilceref'] = child.text
                             elif tag_name == 'tapukimlikno':
-                                feature_data['tapukimlikno'] = child.text
+                                feature['tapukimlikno'] = child.text
                             elif tag_name == 'durum':
-                                feature_data['durum'] = child.text
+                                feature['durum'] = child.text
                             elif tag_name == 'sistemkayittarihi':
-                                feature_data['sistemkayittarihi'] = child.text
+                                feature['sistemkayittarihi'] = child.text
                             elif tag_name == 'tip':
-                                feature_data['tip'] = child.text
+                                feature['tip'] = child.text
                             elif tag_name == 'tapumahallead':
-                                feature_data['tapumahallead'] = child.text
+                                feature['tapumahallead'] = child.text
                             elif tag_name == 'kadastromahallead':
-                                feature_data['kadastromahallead'] = child.text
+                                feature['kadastromahallead'] = child.text
                         
-                        # Find and process geometry elements (prioritize MultiPolygon over Polygon)
-                        geometry_found = False
-                        geometry_types = ['MultiPolygon', 'Polygon', 'Point', 'LineString', 'MultiPoint', 'MultiLineString']
-                        
-                        for geom_type in geometry_types:
-                            if geometry_found:
-                                break  # Only process the first geometry type found
-                                
-                            if LXML_AVAILABLE:
-                                geom_elements = neighbourhood_elem.xpath(f'.//gml:{geom_type}', namespaces={'gml': 'http://www.opengis.net/gml'})
-                            else:
-                                geom_elements = neighbourhood_elem.findall(f'.//{{{namespaces["gml"]}}}{geom_type}')
-                            
-                            for geom_elem in geom_elements:
-                                try:
-                                    # Process the geometry element
-                                    geometry_data = self.process_geometry_element(geom_elem)
-                                    
-                                    # Create result dictionary
-                                    result = {
-                                        **feature_data,
-                                        'geometry_type': geometry_data['geometry_type'],
-                                        'rings_count': geometry_data['rings_count'],
-                                        'original_coords': geometry_data['original_rings'][0] if geometry_data['original_rings'] else [],
-                                        'transformed_coords': geometry_data['transformed_rings'][0] if geometry_data['transformed_rings'] else [],
-                                        'all_original_rings': geometry_data['original_rings'],
-                                        'all_transformed_rings': geometry_data['transformed_rings'],
-                                        'original_crs': 'EPSG:4326',
-                                        'target_crs': 'EPSG:2320',
-                                        'wkt': geometry_data['wkt']
-                                    }
-                                    
-                                    results.append(result)
-                                    geometry_found = True
-                                    
-                                    logger.info(f"Processed {geometry_data['geometry_type']} - Feature {i+1}: Tapu Kimlik No: {feature_data['tapukimlikno']}, FID: {fid_value}, Rings: {geometry_data['rings_count']}")
-                                    break  # Only process the first geometry element of this type
-                                    
-                                except Exception as e:
-                                    logger.error(f"Failed to process {geom_type} geometry: {e}")
-                                    continue
-                        
-                        if not geometry_found:
-                            logger.warning(f"No supported geometry found for feature {i+1}: Parsel {feature_data['parselno']}")
+                    geom = processor.process_geometry_element(elem=elem)
+                    feature['wkt'] = geom['wkt']
             
                 except Exception as e:
                     logger.error(f"Failed to process feature member {i+1}: {e}")
                     continue
             
-            logger.info(f"Successfully processed {len(results)} geometries")
-        
+            logger.info(f"Successfully processed {len(features)} geometries")
+                
+            if not features:
+                logger.info("Mahalle verisi bulunamadı")
+                return True
+            
+            features_count = len(features)
+            logger.info(f"{features_count} mahalle özelliği çekildi")
+            
+            # Veritabanına kaydet
+            db = DatabaseManager()
+            saved_count = db.insert_neighbourhoods(features)
+            logger.info(f"{saved_count} mahalle veritabanına kaydedildi")
+            return True
+                
         except Exception as e:
-            logger.error(f"Mahalle XML parse hatası: {e}")
+            logger.error(f"Mahalle senkronizasyonu sırasında hata: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
-
-        logger.info("Mahalle verilerini senkronize etme işlemi tamamlandı")
 
 
 def main():
@@ -252,23 +211,13 @@ def main():
     try:
         args = parser.parse_args()
 
-        if args.full:
-            scraper.sync_all()
-        elif args.neighbourhoods:
-            scraper.sync_neighbourhoods()
-        elif args.districts:
-            scraper.sync_districts()
-        elif args.stats:
-            scraper.show_stats()
-        else:
-            scraper.sync_daily()
+        scraper.sync_neighbourhoods()
 
     except KeyboardInterrupt:
         logger.info("Uygulama kullanıcı tarafından durduruldu")
     except Exception as e:
         logger.error(f"Ana uygulama hatası: {e}")
-    finally:
-        scraper.cleanup()
+
 
 if __name__ == "__main__":
     main()

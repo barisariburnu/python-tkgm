@@ -4,10 +4,11 @@ Bu modül PostgreSQL veritabanı bağlantısını yönetir ve
 parsel verilerini kaydetme işlemlerini gerçekleştirir.
 """
 
+import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import os
 from loguru import logger
+from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 
@@ -88,9 +89,9 @@ class DatabaseManager:
                     cursor.execute("""
                         CREATE TABLE IF NOT EXISTS tk_parseller (
                             id SERIAL PRIMARY KEY,
-                            fid VARCHAR(50),
-                            parselno VARCHAR(50),
-                            adano VARCHAR(50),
+                            fid BIGINT,
+                            parselno BIGINT,
+                            adano BIGINT,
                             tapukimlikno BIGINT,
                             tapucinsaciklama TEXT,
                             tapuzeminref BIGINT,
@@ -159,7 +160,7 @@ class DatabaseManager:
                     
                     # Sorgu geçmişi tablosu
                     cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS tk_log (
+                        CREATE TABLE IF NOT EXISTS tk_logs (
                             id SERIAL PRIMARY KEY,
                             
                             -- Sorgu parametreleri                   
@@ -190,13 +191,72 @@ class DatabaseManager:
                     
                     # Sorgu geçmişi indeksleri
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_log_typename 
-                        ON tk_log (typename);
+                        CREATE INDEX IF NOT EXISTS idx_tk_logs_typename 
+                        ON tk_logs (typename);
                     """)
                     
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_log_query_time 
-                        ON tk_log (query_time);
+                        CREATE INDEX IF NOT EXISTS idx_tk_logs_query_time 
+                        ON tk_logs (query_time);
+                    """)
+                    
+                    # İlçe tablosu
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS tk_ilceler (
+                            id SERIAL PRIMARY KEY,
+                            fid BIGINT,
+                            ilref BIGINT,
+                            ad VARCHAR(50),
+                            tapukimlikno BIGINT,
+                            durum INTEGER,
+                            geom GEOMETRY(MULTIPOLYGON, 2320),
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            UNIQUE(tapukimlikno)
+                        );
+                    """)
+                    
+                    # Geometri indeksleri
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_ilceler_geom 
+                        ON tk_ilceler USING GIST (geom);
+                    """)
+                    
+                    # Diğer indeksler
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_ilceler_tapukimlikno 
+                        ON tk_ilceler (tapukimlikno);
+                    """)
+                    
+                    # Mahalle tablosu
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS tk_mahalleler (
+                            id SERIAL PRIMARY KEY,
+                            fid BIGINT,
+                            ilceref BIGINT,
+                            tapukimlikno BIGINT,
+                            durum INTEGER,
+                            geom GEOMETRY(MULTIPOLYGON, 2320),
+                            sistemkayittarihi TIMESTAMP,
+                            tip INTEGER,
+                            tapumahallead VARCHAR(50),
+                            kadastromahallead VARCHAR(50),
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            UNIQUE(tapukimlikno)
+                        );
+                    """)
+                    
+                    # Geometri indeksleri
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_mahalleler_geom 
+                        ON tk_mahalleler USING GIST (geom);
+                    """)
+                    
+                    # Diğer indeksler
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_mahalleler_tapukimlikno 
+                        ON tk_mahalleler (tapukimlikno);
                     """)
                     
                     conn.commit()
@@ -205,3 +265,101 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Tablo oluşturma sırasında hata: {e}")
             raise
+    
+    def insert_neighbourhoods(self, features: List[Dict[str, Any]]) -> int:
+        """Mahalle verilerini veritabanına kaydet"""
+        if not features:
+            logger.warning("Kayıt yapılacak mahalle verisi bulunamadı")
+            return 0
+
+        saved_count = 0
+        skipped_count = 0
+        error_count = 0
+        
+        for feature in features:
+            geom = None
+
+            try:
+                # Gerekli alanları kontrol et
+                if 'fid' not in feature or not feature['fid']:
+                    logger.warning(f"Mahalle fid değeri eksik, atlanıyor: {feature}")
+                    skipped_count += 1
+                    continue
+
+                # Geometri verilerini oluştur
+                try:
+                    # Mahalle geometri verilerini kontrol et
+                    if 'wkt' in feature and isinstance(feature['wkt'], str):
+                        # GML Parser'dan gelen geometri verilerini kullan
+                        geom = feature.get('wkt')
+                        
+                        # Geometri verilerinin geçerli olduğunu kontrol et
+                        if not geom:
+                            raise ValueError("Geçerli geometri verileri bulunamadı")
+                except Exception as e:
+                    logger.error(f"Geometri oluşturulurken hata: {e}")
+                    logger.warning(f"Mahalle geometri değeri oluşturulamadı, atlanıyor: {feature}")
+                    skipped_count += 1
+                    continue
+
+                # Her mahalle için ayrı transaction kullan
+                try:
+                    with self.get_connection() as conn:
+                        with conn.cursor() as cursor:
+                            # tk_mahalle tablosuna ekle/güncelle
+                            cursor.execute("""
+                            INSERT INTO tk_mahalle (
+                                fid, ilceref, tapukimlikno, durum, sistemkayittarihi,
+                                tip, tapumahallead, kadastromahallead, geom
+                            ) VALUES (
+                                %s, %s, %s, %s, %s, %s, %s, %s, ST_GeomFromText(%s, 2320)
+                            ) ON CONFLICT (fid) DO UPDATE SET
+                                ilceref = EXCLUDED.ilceref,
+                                tapukimlikno = EXCLUDED.tapukimlikno,
+                                durum = EXCLUDED.durum,
+                                sistemkayittarihi = EXCLUDED.sistemkayittarihi,
+                                tip = EXCLUDED.tip,
+                                tapumahallead = EXCLUDED.tapumahallead,
+                                kadastromahallead = EXCLUDED.kadastromahallead,
+                                geom = ST_GeomFromText(%s, 2320)
+                            """, (
+                                feature.get('fid'),
+                                feature.get('ilceref', 0),
+                                feature.get('tapukimlikno', 0),
+                                feature.get('durum', 0),
+                                feature.get('sistemkayittarihi'),
+                                feature.get('tip', 0),
+                                feature.get('tapumahallead', ''),
+                                feature.get('kadastromahallead', ''),
+                                geom,
+                                geom
+                            ))
+
+                            conn.commit()
+                            cursor.close()
+                            saved_count += 1
+                        
+                except Exception as e:
+                    logger.error(f"Mahalle kaydedilirken hata: {e}")
+                    import traceback
+                    logger.error(f"Hata detayı: {traceback.format_exc()}")
+                    logger.debug(f"Hatalı mahalle fid: {feature.get('fid', 'N/A')}, tapumahallead: {feature.get('tapumahallead', 'N/A')}")
+                    error_count += 1
+                    # Tek bir mahalle hatası tüm işlemi durdurmaz, devam et
+                    continue
+                    
+            except Exception as e:
+                logger.error(f"Mahalle işlenirken hata: {e}")
+                error_count += 1
+                continue
+        
+        logger.info(f"{saved_count} mahalle başarıyla veritabanına kaydedildi")
+        
+        if skipped_count > 0:
+            logger.warning(f"{skipped_count} mahalle atlandı (eksik veri)")
+        if error_count > 0:
+            logger.warning(f"{error_count} mahalle hata nedeniyle kaydedilemedi")
+        
+        logger.info(f"Toplam işlenen: {len(features)}, Kaydedilen: {saved_count}, Atlanan: {skipped_count}, Hatalı: {error_count}")
+
+        return saved_count
