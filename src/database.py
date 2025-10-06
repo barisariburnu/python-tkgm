@@ -102,9 +102,9 @@ class DatabaseManager:
                             durum VARCHAR(100),
                             geom GEOMETRY(MULTIPOLYGON, 2320),
                             sistemkayittarihi TIMESTAMP,
-                            onaydurum INTEGER,
+                            onaydurum BIGINT,
                             kadastroalan DECIMAL(15,2),
-                            tapucinsid INTEGER,
+                            tapucinsid BIGINT,
                             sistemguncellemetarihi TIMESTAMP,
                             kmdurum VARCHAR(100),
                             hazineparseldurum VARCHAR(100),
@@ -274,11 +274,6 @@ class DatabaseManager:
                     cursor.execute("""
                         CREATE INDEX IF NOT EXISTS idx_tk_settings_query_date 
                         ON tk_settings (query_date);
-                    """)
-
-                    cursor.execute("""
-                        INSERT INTO tk_settings (query_date, start_index)
-                        VALUES ('1900-01-01', 0)
                     """)
                     
                     conn.commit()
@@ -674,11 +669,10 @@ class DatabaseManager:
             return None
 
 
-    def update_setting(self, setting_id: int, **kwargs) -> bool:
-        """tk_settings tablosundaki belirli bir kaydı güncelle
+    def update_setting(self, **kwargs) -> bool:
+        """tk_settings tablosundaki son kaydı güncelle
         
         Args:
-            setting_id: Güncellenecek kaydın ID'si
             **kwargs: Güncellenecek alanlar (query_date, start_index)
             
         Returns:
@@ -688,6 +682,14 @@ class DatabaseManager:
             logger.warning("Güncelleme için hiç alan belirtilmedi")
             return False
             
+        # Son ayar kaydını al
+        last_setting = self.get_last_setting()
+        if not last_setting:
+            logger.warning("Güncellenecek ayar kaydı bulunamadı")
+            return False
+            
+        setting_id = last_setting['id']
+        
         # Güncellenebilir alanları kontrol et
         allowed_fields = {'query_date', 'start_index'}
         update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields}
@@ -841,3 +843,61 @@ class DatabaseManager:
             import traceback
             logger.error(f"Hata detayı: {traceback.format_exc()}")
             return {}
+
+
+    def insert_log(self, typename: str, url: str, feature_count: int = 0, 
+                   is_empty: bool = False, is_successful: bool = False,
+                   error_message: str = None, http_status_code: int = None,
+                   response_xml: str = None, response_size: int = None,
+                   execution_duration: float = None, notes: str = None) -> bool:
+        """
+        TKGM servis sorgusunu tk_logs tablosuna kaydet
+        
+        Args:
+            typename: Sorgu yapılan katman adı (örn: TKGM:parseller)
+            url: Tam sorgu URL'si
+            feature_count: Dönen özellik sayısı
+            is_empty: Sonuç boş mu
+            is_successful: Sorgu başarılı mı
+            error_message: Hata mesajı (varsa)
+            http_status_code: HTTP durum kodu
+            response_xml: XML yanıt içeriği
+            response_size: Yanıt boyutu (bayt)
+            execution_duration: Sorgu süresi (saniye)
+            notes: Ek notlar
+            
+        Returns:
+            bool: Kayıt başarılı mı
+        """
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Execution duration'ı PostgreSQL INTERVAL formatına çevir
+                    duration_interval = None
+                    if execution_duration is not None:
+                        duration_interval = f"{execution_duration} seconds"
+                    
+                    cursor.execute("""
+                        INSERT INTO tk_logs (
+                            typename, url, feature_count, is_empty, is_successful,
+                            error_message, http_status_code, response_xml, response_size,
+                            execution_duration, notes
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::INTERVAL, %s
+                        )
+                    """, (
+                        typename, url, feature_count, is_empty, is_successful,
+                        error_message, http_status_code, response_xml, response_size,
+                        duration_interval, notes
+                    ))
+                    
+                    conn.commit()
+                    logger.debug(f"Sorgu logu kaydedildi: {typename} - {feature_count} özellik")
+                    return True
+                    
+        except Exception as e:
+            logger.error(f"Sorgu logunu kaydetme hatası: {e}")
+            logger.error(f"Hata türü: {type(e).__name__}")
+            import traceback
+            logger.error(f"Hata detayı: {traceback.format_exc()}")
+            return False

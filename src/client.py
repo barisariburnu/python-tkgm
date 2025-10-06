@@ -19,12 +19,15 @@ load_dotenv()
 class TKGMClient:
     """TKGM WFS servis istemci sınıfı"""
     
-    def __init__(self, typename=None, max_features=None):
+    def __init__(self, typename=None, max_features=None, db_manager=None):
         self.base_url = os.getenv('TKGM_BASE_URL')
         self.username = os.getenv('TKGM_USERNAME')
         self.password = os.getenv('TKGM_PASSWORD')
         self.typename = typename or os.getenv('PARSELLER', 'TKGM:parseller')
         self.max_features = max_features or int(os.getenv('MAXFEATURES', 1000))
+        
+        # DatabaseManager referansı (loglama için)
+        self.db = db_manager
         
         # HTTP oturum ayarları
         self.session = requests.Session()
@@ -108,7 +111,10 @@ class TKGMClient:
             'success': False,
             'error_message': None,
             'response_size': 0,
-            'execution_time': 0
+            'execution_time': 0,
+            'feature_count': 0,
+            'http_status_code': None,
+            'response_content': None
         }
         
         start_time = time.time()
@@ -118,6 +124,7 @@ class TKGMClient:
                 logger.info(f"TKGM servisine istek gönderiliyor (Deneme {attempt + 1}/{self.max_retries})")
         
                 response = self.session.get(url, timeout=self.timeout)
+                metadata['http_status_code'] = response.status_code
 
                 # HTTP durum kodunu kontrol et
                 response.raise_for_status()
@@ -127,11 +134,45 @@ class TKGMClient:
                 
                 # Yanıt içeriğini al
                 content = response.text
+                metadata['response_content'] = content
                 metadata['response_size'] = len(content)
                 metadata['execution_time'] = time.time() - start_time
                 metadata['success'] = True
+                
+                # XML içeriğinden feature sayısını çıkarmaya çalış
+                try:
+                    import xml.etree.ElementTree as ET
+                    root = ET.fromstring(content)
+                    # WFS yanıtında feature sayısını bul
+                    features = root.findall('.//{http://www.opengis.net/gml}featureMember')
+                    metadata['feature_count'] = len(features)
+                    
+                    # Sonuç boş mu kontrol et
+                    is_empty = metadata['feature_count'] == 0
+                    
+                except Exception as xml_error:
+                    logger.warning(f"XML parse hatası: {xml_error}")
+                    metadata['feature_count'] = 0
+                    is_empty = True
         
-                logger.info(f"TKGM servisinden yanıt alındı: {metadata['response_size']} bayt, {metadata['execution_time']:.2f} saniye")
+                logger.info(f"TKGM servisinden yanıt alındı: {metadata['response_size']} bayt, {metadata['execution_time']:.2f} saniye, {metadata['feature_count']} özellik")
+                
+                # Başarılı sorguyu logla
+                is_success = self.db.insert_log(
+                    typename=self.typename,
+                    url=url,
+                    feature_count=metadata['feature_count'],
+                    is_empty=is_empty,
+                    is_successful=True,
+                    http_status_code=metadata['http_status_code'],
+                    response_xml=content,
+                    response_size=metadata['response_size'],
+                    execution_duration=metadata['execution_time']
+                )
+                if is_success:
+                    logger.debug(f"Sorgu başarıyla loglandı: {self.typename}")
+                else:
+                    logger.warning("Sorgu loglama başarısız")
                 
                 return content
             
@@ -148,6 +189,7 @@ class TKGMClient:
                 error_msg = f"HTTP hatası: {e.response.status_code} - {e.response.reason}"
                 logger.error(error_msg)
                 metadata['error_message'] = error_msg
+                metadata['http_status_code'] = e.response.status_code
                 
                 # 4xx hataları için tekrar deneme yapma
                 if 400 <= e.response.status_code < 500:
@@ -174,3 +216,23 @@ class TKGMClient:
         
         metadata['execution_time'] = time.time() - start_time
         logger.error(f"TKGM servis isteği başarısız: {metadata['error_message']}")
+        
+        # Başarısız sorguyu logla
+        is_success = self.db.insert_log(
+            typename=self.typename,
+            url=url,
+            feature_count=0,
+            is_empty=True,
+            is_successful=False,
+            error_message=metadata['error_message'],
+            http_status_code=metadata['http_status_code'],
+            response_size=metadata['response_size'],
+            execution_duration=metadata['execution_time']
+        )
+
+        if is_success:
+            logger.debug(f"Başarısız sorgu loglandı: {self.typename}")
+        else:
+            logger.warning("Başarısız sorgu loglama başarısız")
+        
+        return None
