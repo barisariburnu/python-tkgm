@@ -8,7 +8,7 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from loguru import logger
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
 
@@ -259,6 +259,28 @@ class DatabaseManager:
                         ON tk_mahalleler (tapukimlikno);
                     """)
                     
+                    # Ayarlar tablosu
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS tk_settings (
+                            id SERIAL PRIMARY KEY,
+                            query_date TIMESTAMP,
+                            start_index INTEGER DEFAULT 0,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    
+                    # Ayarlar indeksleri
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_tk_settings_query_date 
+                        ON tk_settings (query_date);
+                    """)
+
+                    cursor.execute("""
+                        INSERT INTO tk_settings (query_date, start_index)
+                        VALUES ('1900-01-01', 0)
+                    """)
+                    
                     conn.commit()
                     logger.info("Veritabanı tabloları başarıyla oluşturuldu")
                     
@@ -397,7 +419,7 @@ class DatabaseManager:
                 try:
                     with self.get_connection() as conn:
                         with conn.cursor() as cursor:
-                            # tk_mahalle tablosuna ekle/güncelle
+                            # tk_mahalleler tablosuna ekle/güncelle
                             cursor.execute("""
                             INSERT INTO tk_mahalleler (
                                 fid, ilceref, tapukimlikno, durum, sistemkayittarihi,
@@ -455,3 +477,367 @@ class DatabaseManager:
         logger.info(f"Toplam işlenen: {len(features)}, Kaydedilen: {saved_count}, Atlanan: {skipped_count}, Hatalı: {error_count}")
 
         return saved_count
+
+    
+    def insert_parcels(self, features: List[Dict[str, Any]]) -> int:
+        """Parsel verilerini veritabanına kaydet"""
+        if not features:
+            logger.warning("Kayıt yapılacak parsel verisi bulunamadı")
+            return 0
+
+        saved_count = 0
+        skipped_count = 0
+        error_count = 0
+        
+        for feature in features:
+            geom = None
+
+            try:
+                # Gerekli alanları kontrol et
+                if 'fid' not in feature or not feature['fid']:
+                    logger.warning(f"Parsel fid değeri eksik, atlanıyor: {feature}")
+                    skipped_count += 1
+                    continue
+
+                # Geometri verilerini oluştur
+                try:
+                    # Parsel geometri verilerini kontrol et
+                    if 'wkt' in feature and isinstance(feature['wkt'], str):
+                        # GML Parser'dan gelen geometri verilerini kullan
+                        geom = feature.get('wkt')
+                        
+                        # Geometri verilerinin geçerli olduğunu kontrol et
+                        if not geom:
+                            raise ValueError("Geçerli geometri verileri bulunamadı")
+                except Exception as e:
+                    logger.error(f"Geometri oluşturulurken hata: {e}")
+                    logger.warning(f"Parsel geometri değeri oluşturulamadı, atlanıyor: {feature}")
+                    skipped_count += 1
+                    continue
+
+                # Her parsel için ayrı transaction kullan
+                try:
+                    with self.get_connection() as conn:
+                        with conn.cursor() as cursor:
+                            # tk_parseller tablosuna ekle/güncelle
+                            cursor.execute("""
+                            INSERT INTO tk_parseller (
+                                fid, parselno, adano, tapukimlikno, tapucinsaciklama,
+                                tapuzeminref, tapumahalleref, tapualan, tip, belirtmetip,
+                                durum, sistemkayittarihi, onaydurum, kadastroalan,
+                                tapucinsid, sistemguncellemetarihi, kmdurum, hazineparseldurum,
+                                terksebep, detayuretimyontem, orjinalgeomwkt, 
+                                orjinalgeomkoordinatsistem, orjinalgeomuretimyontem, dom,
+                                epok, detayverikalite, orjinalgeomepok, parseltescildurum,
+                                olcuyontem, detayarsivonaylikoordinat, detaypaftazeminuyumluluk,
+                                tesisislemfenkayitref, terkinislemfenkayitref, yanilmasiniri,
+                                hesapverikalite, geom
+                            ) VALUES (
+                                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                %s, %s, %s, %s, %s, ST_GeomFromText(%s, 2320)
+                            ) ON CONFLICT (tapukimlikno, tapuzeminref) DO UPDATE SET
+                                fid = EXCLUDED.fid,
+                                parselno = EXCLUDED.parselno,
+                                adano = EXCLUDED.adano,
+                                tapucinsaciklama = EXCLUDED.tapucinsaciklama,
+                                tapumahalleref = EXCLUDED.tapumahalleref,
+                                tapualan = EXCLUDED.tapualan,
+                                tip = EXCLUDED.tip,
+                                belirtmetip = EXCLUDED.belirtmetip,
+                                durum = EXCLUDED.durum,
+                                sistemkayittarihi = EXCLUDED.sistemkayittarihi,
+                                onaydurum = EXCLUDED.onaydurum,
+                                kadastroalan = EXCLUDED.kadastroalan,
+                                tapucinsid = EXCLUDED.tapucinsid,
+                                sistemguncellemetarihi = EXCLUDED.sistemguncellemetarihi,
+                                kmdurum = EXCLUDED.kmdurum,
+                                hazineparseldurum = EXCLUDED.hazineparseldurum,
+                                terksebep = EXCLUDED.terksebep,
+                                detayuretimyontem = EXCLUDED.detayuretimyontem,
+                                orjinalgeomwkt = EXCLUDED.orjinalgeomwkt,
+                                orjinalgeomkoordinatsistem = EXCLUDED.orjinalgeomkoordinatsistem,
+                                orjinalgeomuretimyontem = EXCLUDED.orjinalgeomuretimyontem,
+                                dom = EXCLUDED.dom,
+                                epok = EXCLUDED.epok,
+                                detayverikalite = EXCLUDED.detayverikalite,
+                                orjinalgeomepok = EXCLUDED.orjinalgeomepok,
+                                parseltescildurum = EXCLUDED.parseltescildurum,
+                                olcuyontem = EXCLUDED.olcuyontem,
+                                detayarsivonaylikoordinat = EXCLUDED.detayarsivonaylikoordinat,
+                                detaypaftazeminuyumluluk = EXCLUDED.detaypaftazeminuyumluluk,
+                                tesisislemfenkayitref = EXCLUDED.tesisislemfenkayitref,
+                                terkinislemfenkayitref = EXCLUDED.terkinislemfenkayitref,
+                                yanilmasiniri = EXCLUDED.yanilmasiniri,
+                                hesapverikalite = EXCLUDED.hesapverikalite,
+                                updated_at = CURRENT_TIMESTAMP,
+                                geom = EXCLUDED.geom
+                            """, (
+                                feature.get('fid'),
+                                feature.get('parselno'),
+                                feature.get('adano'),
+                                feature.get('tapukimlikno'),
+                                feature.get('tapucinsaciklama'),
+                                feature.get('tapuzeminref'),
+                                feature.get('tapumahalleref'),
+                                feature.get('tapualan'),
+                                feature.get('tip'),
+                                feature.get('belirtmetip'),
+                                feature.get('durum'),
+                                feature.get('sistemkayittarihi'),
+                                feature.get('onaydurum'),
+                                feature.get('kadastroalan'),
+                                feature.get('tapucinsid'),
+                                feature.get('sistemguncellemetarihi'),
+                                feature.get('kmdurum'),
+                                feature.get('hazineparseldurum'),
+                                feature.get('terksebep'),
+                                feature.get('detayuretimyontem'),
+                                feature.get('orjinalgeomwkt'),
+                                feature.get('orjinalgeomkoordinatsistem'),
+                                feature.get('orjinalgeomuretimyontem'),
+                                feature.get('dom'),
+                                feature.get('epok'),
+                                feature.get('detayverikalite'),
+                                feature.get('orjinalgeomepok'),
+                                feature.get('parseltescildurum'),
+                                feature.get('olcuyontem'),
+                                feature.get('detayarsivonaylikoordinat'),
+                                feature.get('detaypaftazeminuyumluluk'),
+                                feature.get('tesisislemfenkayitref'),
+                                feature.get('terkinislemfenkayitref'),
+                                feature.get('yanilmasiniri'),
+                                feature.get('hesapverikalite'),
+                                geom
+                            ))
+
+                            conn.commit()
+                            cursor.close()
+                            saved_count += 1
+                        
+                except Exception as e:
+                    logger.error(f"Parsel kaydedilirken hata: {e}")
+                    import traceback
+                    logger.error(f"Hata detayı: {traceback.format_exc()}")
+                    logger.debug(f"Hatalı parsel fid: {feature.get('fid', 'N/A')}, tapuzeminref: {feature.get('tapuzeminref', 'N/A')}")
+                    error_count += 1
+                    # Tek bir parsel hatası tüm işlemi durdurmaz, devam et
+                    continue
+                    
+            except Exception as e:
+                logger.error(f"Parsel işlenirken hata: {e}")
+                error_count += 1
+                continue
+        
+        logger.info(f"{saved_count} parsel başarıyla veritabanına kaydedildi")
+        
+        if skipped_count > 0:
+            logger.warning(f"{skipped_count} parsel atlandı (eksik veri)")
+        if error_count > 0:
+            logger.warning(f"{error_count} parsel hata nedeniyle kaydedilemedi")
+        
+        logger.info(f"Toplam işlenen: {len(features)}, Kaydedilen: {saved_count}, Atlanan: {skipped_count}, Hatalı: {error_count}")
+
+        return saved_count
+
+
+    def get_last_setting(self) -> Optional[Dict[str, Any]]:
+        """tk_settings tablosundan son kaydı getir"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT id, query_date, start_index, created_at, updated_at
+                        FROM tk_settings 
+                        ORDER BY id DESC 
+                        LIMIT 1
+                    """)
+                    
+                    result = cursor.fetchone()
+                    
+                    if result:
+                        # RealDictRow kullanıldığı için sütun adlarıyla erişim yapıyoruz
+                        return {
+                            'id': result['id'],
+                            'query_date': result['query_date'],
+                            'start_index': result['start_index'],
+                            'created_at': result['created_at'],
+                            'updated_at': result['updated_at']
+                        }
+                    else:
+                        logger.info("tk_settings tablosunda kayıt bulunamadı")
+                        return None
+                        
+        except Exception as e:
+            logger.error(f"Son ayar kaydı getirilirken hata: {e}")
+            return None
+
+
+    def update_setting(self, setting_id: int, **kwargs) -> bool:
+        """tk_settings tablosundaki belirli bir kaydı güncelle
+        
+        Args:
+            setting_id: Güncellenecek kaydın ID'si
+            **kwargs: Güncellenecek alanlar (query_date, start_index)
+            
+        Returns:
+            bool: Güncelleme başarılı ise True, değilse False
+        """
+        if not kwargs:
+            logger.warning("Güncelleme için hiç alan belirtilmedi")
+            return False
+            
+        # Güncellenebilir alanları kontrol et
+        allowed_fields = {'query_date', 'start_index'}
+        update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        
+        if not update_fields:
+            logger.warning("Geçerli güncelleme alanı bulunamadı")
+            return False
+            
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # Dinamik UPDATE sorgusu oluştur
+                    set_clauses = []
+                    values = []
+                    
+                    for field, value in update_fields.items():
+                        set_clauses.append(f"{field} = %s")
+                        values.append(value)
+                    
+                    # updated_at alanını otomatik güncelle
+                    set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+                    values.append(setting_id)
+                    
+                    query = f"""
+                        UPDATE tk_settings 
+                        SET {', '.join(set_clauses)}
+                        WHERE id = %s
+                    """
+                    
+                    cursor.execute(query, values)
+                    
+                    if cursor.rowcount > 0:
+                        conn.commit()
+                        logger.info(f"Ayar kaydı (ID: {setting_id}) başarıyla güncellendi")
+                        return True
+                    else:
+                        logger.warning(f"Güncellenecek kayıt bulunamadı (ID: {setting_id})")
+                        return False
+                        
+        except Exception as e:
+            logger.error(f"Ayar kaydı güncellenirken hata: {e}")
+            return False
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Veritabanı istatistiklerini getir"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    stats = {}
+                    
+                    # Parsel istatistikleri
+                    cursor.execute("SELECT COUNT(*) as count FROM tk_parseller")
+                    result = cursor.fetchone()
+                    stats['total_parcels'] = result['count'] if result else 0
+                    
+                    cursor.execute("""
+                        SELECT COUNT(*) as count FROM tk_parseller 
+                        WHERE created_at >= CURRENT_DATE
+                    """)
+                    result = cursor.fetchone()
+                    stats['parcels_today'] = result['count'] if result else 0
+                    
+                    cursor.execute("""
+                        SELECT COUNT(*) as count FROM tk_parseller 
+                        WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+                    """)
+                    result = cursor.fetchone()
+                    stats['parcels_last_week'] = result['count'] if result else 0
+                    
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(tapualan), 0) as total_area FROM tk_parseller 
+                        WHERE tapualan IS NOT NULL
+                    """)
+                    result = cursor.fetchone()
+                    stats['total_area'] = float(result['total_area']) if result and result['total_area'] else 0.0
+                    
+                    cursor.execute("""
+                        SELECT MIN(sistemkayittarihi) as min_date, MAX(sistemkayittarihi) as max_date 
+                        FROM tk_parseller 
+                        WHERE sistemkayittarihi IS NOT NULL
+                    """)
+                    date_range = cursor.fetchone()
+                    stats['date_range'] = {
+                        'min_date': date_range['min_date'].strftime('%Y-%m-%d') if date_range and date_range['min_date'] else None,
+                        'max_date': date_range['max_date'].strftime('%Y-%m-%d') if date_range and date_range['max_date'] else None
+                    }
+                    
+                    # İlçe istatistikleri
+                    cursor.execute("SELECT COUNT(*) as count FROM tk_ilceler")
+                    result = cursor.fetchone()
+                    stats['total_districts'] = result['count'] if result else 0
+                    
+                    # Mahalle istatistikleri
+                    cursor.execute("SELECT COUNT(*) as count FROM tk_mahalleler")
+                    result = cursor.fetchone()
+                    stats['total_neighbourhoods'] = result['count'] if result else 0
+                    
+                    # Log istatistikleri
+                    cursor.execute("SELECT COUNT(*) as count FROM tk_logs")
+                    result = cursor.fetchone()
+                    stats['total_queries'] = result['count'] if result else 0
+                    
+                    cursor.execute("""
+                        SELECT COUNT(*) as count FROM tk_logs 
+                        WHERE query_time >= CURRENT_DATE
+                    """)
+                    result = cursor.fetchone()
+                    stats['queries_today'] = result['count'] if result else 0
+                    
+                    cursor.execute("""
+                        SELECT COALESCE(AVG(feature_count), 0) as avg_features FROM tk_logs 
+                        WHERE feature_count > 0
+                    """)
+                    result = cursor.fetchone()
+                    stats['avg_features_per_query'] = float(result['avg_features']) if result and result['avg_features'] else 0.0
+                    
+                    # En son güncelleme tarihi
+                    cursor.execute("""
+                        SELECT MAX(updated_at) as last_update FROM tk_parseller
+                    """)
+                    last_update = cursor.fetchone()
+                    stats['last_update'] = last_update['last_update'].strftime('%Y-%m-%d %H:%M:%S') if last_update and last_update['last_update'] else None
+                    
+                    # Ayar bilgileri
+                    cursor.execute("""
+                        SELECT query_date, start_index, updated_at 
+                        FROM tk_settings 
+                        ORDER BY updated_at DESC 
+                        LIMIT 1
+                    """)
+                    setting = cursor.fetchone()
+                    if setting:
+                        stats['current_settings'] = {
+                            'query_date': setting['query_date'].strftime('%Y-%m-%d') if setting['query_date'] else None,
+                            'start_index': setting['start_index'] or 0,
+                            'last_updated': setting['updated_at'].strftime('%Y-%m-%d %H:%M:%S') if setting['updated_at'] else None
+                        }
+                    else:
+                        stats['current_settings'] = {
+                            'query_date': None,
+                            'start_index': 0,
+                            'last_updated': None
+                        }
+                    
+                    logger.info(f"İstatistikler başarıyla alındı: {len(stats)} adet")
+                    return stats
+                    
+        except Exception as e:
+            logger.error(f"İstatistik verilerini alırken hata: {e}")
+            logger.error(f"Hata türü: {type(e).__name__}")
+            import traceback
+            logger.error(f"Hata detayı: {traceback.format_exc()}")
+            return {}

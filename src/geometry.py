@@ -482,7 +482,7 @@ class WFSGeometryProcessor:
                     all_transformed_rings = []
                     
                     for coord_elem in coord_elements:
-                        if coord_elem.text:
+                        if coord_elem.text is not None and coord_elem.text.strip():
                             # Bu halkadan koordinatları çıkar
                             original_coords = self.extract_coordinates_from_string(coord_elem.text)
                             transformed_coords = self.transform_coordinates(original_coords)

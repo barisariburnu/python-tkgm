@@ -59,7 +59,7 @@ class TKGMClient:
             }
             
             test_url = f"{self.base_url}?{urlencode(test_params)}"
-            logger.info(test_url)
+            logger.debug(f"Test URL: {test_url}")
             response = self.session.get(test_url, timeout=self.timeout)
             response.raise_for_status()
             
@@ -98,11 +98,7 @@ class TKGMClient:
     def fetch_features(self, start_index: int = 0, cql_filter: str = None) -> Optional[Dict]:
         """WFS servisinden özellikleri çek"""
         params = self._build_request_params(start_index, cql_filter)
-        
-        if '?' in self.base_url:
-            url = f"{self.base_url}&{urlencode(params)}"
-        else:
-            url = f"{self.base_url}?{urlencode(params)}"
+        url = f"{self.base_url}?{urlencode(params)}"
     
         metadata = {
             'request_url': url,
