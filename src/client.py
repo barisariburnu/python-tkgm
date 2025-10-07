@@ -93,7 +93,7 @@ class TKGMClient:
         
         # CQL filtre varsa ve None/boş değilse ekle
         if cql_filter and cql_filter.strip():
-            params['CQL_FILTER'] = cql_filter.strip()
+            params['cql_filter'] = cql_filter.strip()
         
         return params
 
@@ -102,6 +102,7 @@ class TKGMClient:
         """WFS servisinden özellikleri çek"""
         params = self._build_request_params(start_index, cql_filter)
         url = f"{self.base_url}?{urlencode(params)}"
+        logger.info(f"Request URL: {url}")
     
         metadata = {
             'request_url': url,

@@ -315,30 +315,30 @@ class TKGMScraper:
             return
 
 
-    def sync_daily_parcels(self, start_date: Optional[datetime] = datetime.now() - timedelta(days=1), start_index: Optional[int] = 0):
+    def sync_daily_parcels(self, neighbourhood_id: int, start_date: datetime, start_index: Optional[int] = 0):
         """Parsel verilerini senkronize et"""
         logger.info(f"Parsel verilerini senkronize etme işlemi başlatılıyor... Başlangıç tarihi: {start_date.strftime('%Y-%m-%d')}")
         
         db = DatabaseManager()
         current_index = start_index
-        current_date = start_date
+        current_date = start_date.date()
         today = datetime.now().date()
         
         # TKGMClient instance'ını döngü dışında bir kez oluştur
         client = TKGMClient(typename=os.getenv('PARSELLER', 'TKGM:parseller'), db_manager=db)
         
-        while current_date.date() <= today and self.running:
-            logger.info(f"Sayfa {current_index + 1} işleniyor (start_index: {current_index})")
+        while current_date <= today and self.running:
+            logger.info(f"Mahalle: {neighbourhood_id} - Sayfa {current_index + 1} işleniyor (start_index: {current_index})")
 
-            base_filter = "(tapukimlikno>0 and tapuzeminref>0 and onaydurum=1)"
-            date_filter = f"(sistemkayittarihi >= '{start_date.strftime('%Y-%m-%d')}' OR sistemguncellemetarihi >= '{start_date.strftime('%Y-%m-%d')}')"
-            cql_filter = f"{base_filter} and {date_filter}"
+            base_filter = f"(tapukimlikno>0 and tapuzeminref>0 and onaydurum=1 and tapumahalleref={neighbourhood_id})"
+            date_filter = f"(sistemkayittarihi>='{start_date.strftime('%Y-%m-%d')}' OR sistemguncellemetarihi>='{start_date.strftime('%Y-%m-%d')}')"
+            cql_filter = f"({base_filter} and {date_filter})"
 
             logger.info(f"Parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
             content = client.fetch_features(start_index=current_index, cql_filter=cql_filter)
             
             if content is None:
-                logger.error("TKGM servisinden parsel verisi alınamadı")
+                logger.error(f"Mahalle: {neighbourhood_id} - TKGM servisinden parsel verisi alınamadı")
                 break
             
             processor = WFSGeometryProcessor()
@@ -346,11 +346,11 @@ class TKGMScraper:
             try:
                 # XML'i parse et
                 feature_members = processor.parse_wfs_xml(content)
-                logger.info(f"{len(feature_members)} parsel bulundu")
+                logger.info(f"Mahalle: {neighbourhood_id} - {len(feature_members)} parsel bulundu")
                 
                 # Eğer feature member yoksa bir sonraki tarihe geç
                 if len(feature_members) == 0:
-                    logger.info(f"Tarih {current_date.strftime('%Y-%m-%d')} için feature member bulunamadı, bir sonraki tarihe geçiliyor")
+                    logger.info(f"Mahalle: {neighbourhood_id} - Tarih {current_date.strftime('%Y-%m-%d')} için feature member bulunamadı, bir sonraki tarihe geçiliyor")
                     current_date += timedelta(days=1)
                     current_index = 0  # Yeni tarih için start_index'i sıfırla
                     continue
@@ -499,57 +499,57 @@ class TKGMScraper:
                                     all_features.append(feature)
                                 
                             except Exception as e:
-                                logger.error(f"Öğe işlenirken hata oluştu: {e}")
+                                logger.error(f"Mahalle: {neighbourhood_id} - Öğe işlenirken hata oluştu: {e}")
                                 continue
                 
                     except Exception as e:
-                        logger.error(f"Özellik üyesi {i+1} işlenirken hata oluştu: {e}")
+                        logger.error(f"Mahalle: {neighbourhood_id} - Özellik üyesi {i+1} işlenirken hata oluştu: {e}")
                         continue
                 
-                logger.info(f"Toplam {len(all_features)} geometri başarıyla işlendi")
+                logger.info(f"Mahalle: {neighbourhood_id} - Toplam {len(all_features)} geometri başarıyla işlendi")
                     
                 if not all_features:
-                    logger.info("Bu sayfada parsel verisi bulunamadı")
+                    logger.info(f"Mahalle: {neighbourhood_id} - Bu sayfada parsel verisi bulunamadı")
                     break
                 
                 features_count = len(all_features)
-                logger.info(f"{features_count} parsel özelliği çekildi")
+                logger.info(f"Mahalle: {neighbourhood_id} - Toplam {features_count} parsel özelliği çekildi")
                 
                 # Veritabanına kaydet
                 if all_features:
                     try:
                         db.insert_parcels(all_features)
-                        logger.info(f"{len(all_features)} parsel veritabanına kaydedildi")
+                        logger.info(f"Mahalle: {neighbourhood_id} - {len(all_features)} parsel veritabanına kaydedildi")
                         
                         # Sonraki sayfa için start_index'i artır
                         current_index += 1
                         
                         # tk_settings tablosuna güncelleme yap - sadece tarih ve index
-                        db.update_setting(query_date=current_date, start_index=current_index)
-                        logger.info(f"Parsel sorgu ayarları güncellendi: query_date={current_date}, start_index={current_index}")
+                        db.update_setting(query_date=current_date, start_index=current_index, neighbourhood_id=neighbourhood_id)
+                        logger.info(f"Mahalle: {neighbourhood_id} - Parsel sorgu ayarları güncellendi: query_date={current_date}, start_index={current_index}")
                         
                     except Exception as e:
-                        logger.error(f"Veritabanına kaydetme hatası: {e}")
+                        logger.error(f"Mahalle: {neighbourhood_id} - Veritabanına kaydetme hatası: {e}")
                         break
                 else:
-                    logger.info("Kaydedilecek parsel verisi bulunamadı")
+                    logger.info(f"Mahalle: {neighbourhood_id} - Kaydedilecek parsel verisi bulunamadı")
                     # Veri bulunamadığında bir sonraki tarihe geç
                     current_date += timedelta(days=1)
                     current_index = 0
                     # Yeni tarihe geçerken ayarları güncelle
-                    db.update_setting(query_date=current_date, start_index=current_index)
+                    db.update_setting(query_date=current_date, start_index=current_index, neighbourhood_id=neighbourhood_id)
                     continue
 
             except Exception as e:
-                logger.error(f"Parsel verilerini işlerken hata: {e}")
+                logger.error(f"Mahalle: {neighbourhood_id} - Parsel verilerini işlerken hata: {e}")
                 break
         
-        logger.info(f"Günlük parsel verilerinin senkronizasyonu tamamlandı. Son işlenen sayfa: {current_index}")
+        logger.info(f"Mahalle: {neighbourhood_id} - Günlük parsel verilerinin senkronizasyonu tamamlandı. Son işlenen sayfa: {current_index}")
 
 
-    def sync_fully_parcels(self, start_index: Optional[int] = 0):
+    def sync_fully_parcels(self, neighbourhood_id: int, start_index: Optional[int] = 0):
         """Tüm parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
-        logger.info("Tüm parsel verilerini senkronize etme işlemi başlatılıyor...")
+        logger.info(f"Mahalle: {neighbourhood_id} - Tüm parsel verilerini senkronize etme işlemi başlatılıyor...")
         
         db = DatabaseManager()
         current_index = start_index
@@ -559,15 +559,15 @@ class TKGMScraper:
         client = TKGMClient(typename=os.getenv('PARSELLER', 'TKGM:parseller'), db_manager=db)
         
         while self.running:
-            logger.info(f"Sayfa {current_index + 1} işleniyor (start_index: {current_index})")
+            logger.info(f"Mahalle: {neighbourhood_id} - Sayfa {current_index + 1} işleniyor (start_index: {current_index})")
             
-            cql_filter = "(tapukimlikno>0 and tapuzeminref>0 and onaydurum=1)"
+            cql_filter = f"(sistemguncellemetarihi>'1900-01-01' and onaydurum=1 and tapumahalleref={neighbourhood_id})"
             
-            logger.info(f"Parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
+            logger.info(f"Mahalle: {neighbourhood_id} - Parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
             content = client.fetch_features(start_index=current_index, cql_filter=cql_filter)
             
             if content is None:
-                logger.error("TKGM servisinden parsel verisi alınamadı")
+                logger.error(f"Mahalle: {neighbourhood_id} - TKGM servisinden parsel verisi alınamadı")
                 break
             
             processor = WFSGeometryProcessor()
@@ -575,12 +575,12 @@ class TKGMScraper:
             try:
                 # XML'i parse et
                 feature_members = processor.parse_wfs_xml(content)
-                logger.info(f"{len(feature_members)} parsel bulundu")
+                logger.info(f"Mahalle: {neighbourhood_id} - Toplam {len(feature_members)} parsel bulundu")
                 
                 # Eğer feature member yoksa bir sonraki tarihe geç
                 if len(feature_members) == 0:
-                    logger.info(f"Sayfa {current_index + 1} için feature member bulunamadı, bir sonraki sayfaya geçiliyor")
-                    current_index += 1
+                    logger.info(f"Mahalle: {neighbourhood_id} - Sayfa {current_index + 1} için feature member bulunamadı, bir sonraki sayfaya geçiliyor")
+                    self.running = False
                     continue
                 
                 # Tüm features'ları toplamak için ana liste
@@ -727,58 +727,63 @@ class TKGMScraper:
                                     all_features.append(feature)
                                 
                             except Exception as e:
-                                logger.error(f"Öğe işlenirken hata oluştu: {e}")
+                                logger.error(f"Mahalle: {neighbourhood_id} - Öğe işlenirken hata oluştu: {e}")
                                 continue
                 
                     except Exception as e:
-                        logger.error(f"Özellik üyesi {i+1} işlenirken hata oluştu: {e}")
+                        logger.error(f"Mahalle: {neighbourhood_id} - Özellik üyesi {i+1} işlenirken hata oluştu: {e}")
                         continue
                 
-                logger.info(f"Toplam {len(all_features)} geometri başarıyla işlendi")
+                logger.info(f"Mahalle: {neighbourhood_id} - Toplam {len(all_features)} geometri başarıyla işlendi")
                     
                 if not all_features:
-                    logger.info("Bu sayfada parsel verisi bulunamadı")
+                    logger.info(f"Mahalle: {neighbourhood_id} - Bu sayfada parsel verisi bulunamadı")
                     break
                 
                 features_count = len(all_features)
-                logger.info(f"{features_count} parsel özelliği çekildi")
+                logger.info(f"Mahalle: {neighbourhood_id} - Toplam {features_count} parsel özelliği çekildi")
                 
                 # Veritabanına kaydet
                 if all_features:
                     try:
                         db.insert_parcels(all_features)
-                        logger.info(f"{len(all_features)} parsel veritabanına kaydedildi")
+                        logger.info(f"Mahalle: {neighbourhood_id} - {len(all_features)} parsel veritabanına kaydedildi")
                         
                         # Sonraki sayfa için start_index'i artır
                         current_index += 1
                         
                         # tk_settings tablosuna güncelleme yap - sadece tarih ve index
-                        db.update_setting(query_date=current_date, start_index=current_index)
-                        logger.info(f"Parsel sorgu ayarları güncellendi: query_date={current_date}, start_index={current_index}")
+                        db.update_setting(query_date=current_date, start_index=current_index, neighbourhood_id=neighbourhood_id, scrape_type=True)
+                        logger.info(f"Mahalle: {neighbourhood_id} - Parsel sorgu ayarları güncellendi: query_date={current_date}, start_index={current_index}")
+
+                        # Eğer çekilen parsel sayısı 1000'den azsa, tüm veriler çekilmiş demektir
+                        if features_count < 1000:
+                            logger.info(f"Mahalle: {neighbourhood_id} - Toplam {features_count} parsel çekildi. Tüm veriler çekildi.")
+                            self.running = False
                         
                     except Exception as e:
-                        logger.error(f"Veritabanına kaydetme hatası: {e}")
+                        logger.error(f"Mahalle: {neighbourhood_id} - Veritabanına kaydetme hatası: {e}")
                         break
                 else:
-                    logger.info("Kaydedilecek parsel verisi bulunamadı")
+                    logger.info(f"Mahalle: {neighbourhood_id} - Kaydedilecek parsel verisi bulunamadı")
                     # Veri bulunamadığında bir sonraki tarihe geç
                     self.running = False
                     current_index = 0
                     # Yeni tarihe geçerken ayarları güncelle
-                    db.update_setting(query_date=current_date, start_index=current_index)
+                    db.update_setting(query_date=current_date, start_index=current_index, neighbourhood_id=neighbourhood_id, scrape_type=True)
                     continue
                 
             except Exception as e:
-                logger.error(f"Parsel verilerini işlerken hata: {e}")
+                logger.error(f"Mahalle: {neighbourhood_id} - Parsel verilerini işlerken hata: {e}")
                 break
         
         # İşlem tamamlandığında final güncelleme
-        db.update_setting(query_date=current_date, start_index=current_index)
+        db.update_setting(query_date=current_date, start_index=current_index, neighbourhood_id=neighbourhood_id, scrape_type=True)
         
         if not self.running:
-            logger.info("İşlem kullanıcı tarafından durduruldu")
+            logger.info(f"Mahalle: {neighbourhood_id} - İşlem kullanıcı tarafından durduruldu")
         else:
-            logger.info(f"Tüm parsel verilerinin senkronizasyonu tamamlandı. Son işlenen tarih: {current_date.strftime('%Y-%m-%d')}, Son sayfa: {current_index}")
+            logger.info(f"Mahalle: {neighbourhood_id} - Tüm parsel verilerinin senkronizasyonu tamamlandı. Son işlenen tarih: {current_date.strftime('%Y-%m-%d')}, Son sayfa: {current_index}")
 
 
     def show_stats(self):
@@ -855,18 +860,25 @@ def main():
 
         if args.daily:
             db = DatabaseManager()
-            last_setting = db.get_last_setting()
-            # Eğer son sorgu tarihi varsa, başlangıç tarihini son sorgu tarihinden sonraki gün olarak ayarla
-            start_date = start_date if not last_setting['query_date'] else last_setting['query_date']
-            start_index = 0 if not last_setting['start_index'] else last_setting['start_index']
+            neighbourhoods = db.get_neighbourhoods()
 
-            scraper.sync_daily_parcels(start_date=start_date, start_index=start_index)
+            for neighbourhood in neighbourhoods:
+                last_setting = db.get_last_setting(neighbourhood.get("tapukimlikno"), False)
+                # Eğer son sorgu tarihi varsa, başlangıç tarihini son sorgu tarihinden sonraki gün olarak ayarla
+                yesterday = datetime.now() - timedelta(days=1)
+                start_date = last_setting.get('query_date', yesterday)
+                start_index = 0
+
+                scraper.sync_daily_parcels(neighbourhood.get("tapukimlikno"), start_date=start_date, start_index=start_index)
         elif args.fully:
             db = DatabaseManager()
-            last_setting = db.get_last_setting()
-            start_index = 0 if not last_setting['start_index'] else last_setting['start_index']
-            
-            scraper.sync_fully_parcels(start_index=start_index)
+            neighbourhoods = db.get_neighbourhoods()
+
+            for neighbourhood in neighbourhoods:
+                last_setting = db.get_last_setting(neighbourhood.get("tapukimlikno"), True)
+                start_index = last_setting.get('start_index', 0)
+                
+                scraper.sync_fully_parcels(neighbourhood.get("tapukimlikno"), start_index=start_index)
         elif args.neighbourhoods:
             scraper.sync_neighbourhoods()
         elif args.districts:

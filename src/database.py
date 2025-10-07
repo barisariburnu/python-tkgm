@@ -259,14 +259,18 @@ class DatabaseManager:
                         ON tk_mahalleler (tapukimlikno);
                     """)
                     
-                    # Ayarlar tablosu
+                    # Ayarlar tablosu   
+                    # scrape_type => True: FULLY, False: DAILY
                     cursor.execute("""
                         CREATE TABLE IF NOT EXISTS tk_settings (
                             id SERIAL PRIMARY KEY,
                             query_date TIMESTAMP,
                             start_index INTEGER DEFAULT 0,
+                            neighbourhood_id BIGINT,
+                            scrape_type BOOLEAN DEFAULT FALSE,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            UNIQUE(neighbourhood_id, scrape_type)
                         );
                     """)
                     
@@ -637,17 +641,18 @@ class DatabaseManager:
         return saved_count
 
 
-    def get_last_setting(self) -> Optional[Dict[str, Any]]:
+    def get_last_setting(self, neighbourhood_id: int, scrape_type: bool = False) -> Optional[Dict[str, Any]]:
         """tk_settings tablosundan son kaydı getir"""
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT id, query_date, start_index, created_at, updated_at
+                        SELECT id, query_date, start_index, scrape_type, neighbourhood_id, created_at, updated_at
                         FROM tk_settings 
+                        WHERE neighbourhood_id = %s AND scrape_type = %s
                         ORDER BY id DESC 
                         LIMIT 1
-                    """)
+                    """, (neighbourhood_id, scrape_type,))
                     
                     result = cursor.fetchone()
                     
@@ -657,41 +662,41 @@ class DatabaseManager:
                             'id': result['id'],
                             'query_date': result['query_date'],
                             'start_index': result['start_index'],
+                            'scrape_type': result['scrape_type'],
+                            'neighbourhood_id': result['neighbourhood_id'],
                             'created_at': result['created_at'],
                             'updated_at': result['updated_at']
                         }
                     else:
                         logger.info("tk_settings tablosunda kayıt bulunamadı")
-                        return None
+                        return {}
                         
         except Exception as e:
             logger.error(f"Son ayar kaydı getirilirken hata: {e}")
-            return None
+            return {}
 
 
     def update_setting(self, **kwargs) -> bool:
-        """tk_settings tablosundaki son kaydı güncelle
+        """tk_settings tablosuna kayıt ekle veya güncelle (UPSERT)
         
         Args:
-            **kwargs: Güncellenecek alanlar (query_date, start_index)
+            **kwargs: Eklenecek/güncellenecek alanlar (query_date, start_index, scrape_type, neighbourhood_id)
             
         Returns:
-            bool: Güncelleme başarılı ise True, değilse False
+            bool: İşlem başarılı ise True, değilse False
         """
         if not kwargs:
             logger.warning("Güncelleme için hiç alan belirtilmedi")
             return False
             
-        # Son ayar kaydını al
-        last_setting = self.get_last_setting()
-        if not last_setting:
-            logger.warning("Güncellenecek ayar kaydı bulunamadı")
+        # Gerekli alanları kontrol et
+        required_fields = {'neighbourhood_id', 'scrape_type'}
+        if not all(field in kwargs for field in required_fields):
+            logger.warning(f"Gerekli alanlar eksik: {required_fields}")
             return False
             
-        setting_id = last_setting['id']
-        
         # Güncellenebilir alanları kontrol et
-        allowed_fields = {'query_date', 'start_index'}
+        allowed_fields = {'query_date', 'start_index', 'scrape_type', 'neighbourhood_id'}
         update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields}
         
         if not update_fields:
@@ -701,36 +706,38 @@ class DatabaseManager:
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
-                    # Dinamik UPDATE sorgusu oluştur
-                    set_clauses = []
-                    values = []
+                    # UPSERT sorgusu (PostgreSQL ON CONFLICT kullanarak)
+                    insert_fields = list(update_fields.keys())
+                    insert_values = list(update_fields.values())
                     
-                    for field, value in update_fields.items():
-                        set_clauses.append(f"{field} = %s")
-                        values.append(value)
+                    # UPDATE kısmı için set_clauses oluştur (EXCLUDED kullanarak)
+                    update_clauses = []
+                    for field in insert_fields:
+                        if field not in ['neighbourhood_id', 'scrape_type']:  # UNIQUE constraint alanları hariç
+                            update_clauses.append(f"{field} = EXCLUDED.{field}")
                     
                     # updated_at alanını otomatik güncelle
-                    set_clauses.append("updated_at = CURRENT_TIMESTAMP")
-                    values.append(setting_id)
+                    update_clauses.append("updated_at = CURRENT_TIMESTAMP")
                     
                     query = f"""
-                        UPDATE tk_settings 
-                        SET {', '.join(set_clauses)}
-                        WHERE id = %s
+                        INSERT INTO tk_settings ({', '.join(insert_fields)})
+                        VALUES ({', '.join(['%s'] * len(insert_values))})
+                        ON CONFLICT (neighbourhood_id, scrape_type)
+                        DO UPDATE SET {', '.join(update_clauses)}
                     """
                     
-                    cursor.execute(query, values)
+                    cursor.execute(query, insert_values)
                     
                     if cursor.rowcount > 0:
                         conn.commit()
-                        logger.info(f"Ayar kaydı (ID: {setting_id}) başarıyla güncellendi")
+                        logger.info(f"Ayar kaydı başarıyla eklendi/güncellendi (neighbourhood_id: {kwargs.get('neighbourhood_id')}, scrape_type: {kwargs.get('scrape_type')})")
                         return True
                     else:
-                        logger.warning(f"Güncellenecek kayıt bulunamadı (ID: {setting_id})")
+                        logger.warning("Hiçbir kayıt etkilenmedi")
                         return False
                         
         except Exception as e:
-            logger.error(f"Ayar kaydı güncellenirken hata: {e}")
+            logger.error(f"Ayar kaydı eklenirken/güncellenirken hata: {e}")
             return False
 
     def get_statistics(self) -> Dict[str, Any]:
@@ -901,3 +908,32 @@ class DatabaseManager:
             import traceback
             logger.error(f"Hata detayı: {traceback.format_exc()}")
             return False
+
+
+    def get_neighbourhoods(self) -> List[Dict[str, Any]]:
+        """Tüm mahalleleri tapukimlikno ile birlikte getir"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT tapukimlikno, tapumahallead, kadastromahallead, ilceref
+                        FROM tk_mahalleler 
+                        WHERE tapukimlikno IS NOT NULL
+                        ORDER BY tapukimlikno
+                    """)
+                    
+                    neighbourhoods = []
+                    for row in cursor.fetchall():
+                        neighbourhoods.append({
+                            'tapukimlikno': row['tapukimlikno'],
+                            'tapumahallead': row['tapumahallead'],
+                            'kadastromahallead': row['kadastromahallead'],
+                            'ilceref': row['ilceref']
+                        })
+                    
+                    logger.info(f"{len(neighbourhoods)} mahalle bilgisi alındı")
+                    return neighbourhoods
+                    
+        except Exception as e:
+            logger.error(f"Mahalle bilgileri alınırken hata: {e}")
+            return []
