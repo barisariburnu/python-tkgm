@@ -10,7 +10,7 @@ import argparse
 from loguru import logger
 from dotenv import load_dotenv
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 
 # Modülleri import et
 from src.database import DatabaseManager
@@ -313,6 +313,246 @@ class TKGMScraper:
         except Exception as e:
             logger.error(f"Mahalle verilerini işlerken hata: {e}")
             return
+
+
+    def sync_daily_parcels(self, start_date: Optional[date] = None, start_index: Optional[int] = 0):
+        """Günlük parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
+        logger.info(f"Günlük parsel verilerini senkronize etme işlemi başlatılıyor...")
+        max_features = os.getenv('MAX_FEATURES', 1000)
+        
+        db = DatabaseManager()
+        current_index = start_index
+        current_date = start_date if start_date else (date.today() - timedelta(days=1))
+        end_date = date.today()
+                
+        # TKGMClient instance'ını döngü dışında bir kez oluştur
+        client = TKGMClient(typename=os.getenv('PARSELLER', 'TKGM:parseller'), db_manager=db)
+        
+        while current_date < end_date:
+            logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında işleniyor")
+            
+            # CQL filtre oluştur
+            cql_filter = f"(onaydurum=1 and durum=3 and sistemguncellemetarihi>='{current_date.isoformat()}' and sistemguncellemetarihi<'{end_date.isoformat()}' and sistemkayittarihi<'{end_date.isoformat()}')"
+            
+            logger.info(f"Parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
+            content = client.fetch_features(start_index=current_index, cql_filter=cql_filter)
+            
+            if content is None:
+                logger.error(f"TKGM servisinden parsel verisi alınamadı")
+                break
+            
+            processor = WFSGeometryProcessor()
+            
+            try:
+                # XML'i parse et
+                feature_members = processor.parse_wfs_xml(content)
+                logger.info(f"Toplam {len(feature_members)} parsel bulundu")
+                
+                if len(feature_members) == 0:
+                    logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında feature member bulunamadı, bir sonraki sayfaya geçiliyor")
+                    current_date = current_date + timedelta(days=1)
+                    continue
+                
+                # Tüm features'ları toplamak için ana liste
+                all_features = []
+                
+                # Process each feature member
+                for i, feature_member in enumerate(feature_members):
+                    try:
+                        # Find parsel elements
+                        elements = []
+                        for child in feature_member:
+                            if 'parsel' in child.tag:
+                                elements.append(child)
+                        
+                        # Her feature_member için parsel işle
+                        for elem in elements:
+                            try:
+                                # Extract FID from parsel element
+                                fid_full = elem.get('fid', '')
+                                fid_value = None
+                                if fid_full and '.' in fid_full:
+                                    fid_value = fid_full.split('.')[-1]
+                                
+                                # Initialize feature data with all TKGM fields
+                                feature = {
+                                    'fid': fid_value,
+                                    'parselno': None,
+                                    'adano': None,
+                                    'tapukimlikno': None,
+                                    'tapucinsaciklama': None,
+                                    'tapuzeminref': None,
+                                    'tapumahalleref': None,
+                                    'tapualan': None,
+                                    'tip': None,
+                                    'belirtmetip': None,
+                                    'durum': None,
+                                    'geom': None,
+                                    'sistemkayittarihi': None,
+                                    'onaydurum': None,
+                                    'kadastroalan': None,
+                                    'tapucinsid': None,
+                                    'sistemguncellemetarihi': None,
+                                    'kmdurum': None,
+                                    'hazineparseldurum': None,
+                                    'terksebep': None,
+                                    'detayuretimyontem': None,
+                                    'orjinalgeomwkt': None,
+                                    'orjinalgeomkoordinatsistem': None,
+                                    'orjinalgeomuretimyontem': None,
+                                    'dom': None,
+                                    'epok': None,
+                                    'detayverikalite': None,
+                                    'orjinalgeomepok': None,
+                                    'parseltescildurum': None,
+                                    'olcuyontem': None,
+                                    'detayarsivonaylikoordinat': None,
+                                    'detaypaftazeminuyumluluk': None,
+                                    'tesisislemfenkayitref': None,
+                                    'terkinislemfenkayitref': None,
+                                    'yanilmasiniri': None,
+                                    'hesapverikalite': None,
+                                    'created_at': datetime.now(),
+                                    'updated_at': datetime.now()
+                                }
+                                
+                                # Extract all feature attributes
+                                for child in elem:
+                                    tag_name = child.tag.split('}')[-1]  # Remove namespace
+                                    if tag_name == 'parselno':
+                                        feature['parselno'] = child.text
+                                    elif tag_name == 'adano':
+                                        feature['adano'] = child.text
+                                    elif tag_name == 'tapukimlikno':
+                                        feature['tapukimlikno'] = child.text
+                                    elif tag_name == 'tapucinsaciklama':
+                                        feature['tapucinsaciklama'] = child.text
+                                    elif tag_name == 'tapuzeminref':
+                                        feature['tapuzeminref'] = child.text
+                                    elif tag_name == 'tapumahalleref':
+                                        feature['tapumahalleref'] = child.text
+                                    elif tag_name == 'tapualan':
+                                        feature['tapualan'] = child.text
+                                    elif tag_name == 'tip':
+                                        feature['tip'] = child.text
+                                    elif tag_name == 'belirtmetip':
+                                        feature['belirtmetip'] = child.text
+                                    elif tag_name == 'durum':
+                                        feature['durum'] = child.text
+                                    elif tag_name == 'geom':
+                                        feature['geom'] = child.text
+                                    elif tag_name == 'sistemkayittarihi':
+                                        feature['sistemkayittarihi'] = child.text
+                                    elif tag_name == 'onaydurum':
+                                        feature['onaydurum'] = child.text
+                                    elif tag_name == 'kadastroalan':
+                                        feature['kadastroalan'] = child.text
+                                    elif tag_name == 'tapucinsid':
+                                        feature['tapucinsid'] = child.text
+                                    elif tag_name == 'sistemguncellemetarihi':
+                                        feature['sistemguncellemetarihi'] = child.text
+                                    elif tag_name == 'kmdurum':
+                                        feature['kmdurum'] = child.text
+                                    elif tag_name == 'hazineparseldurum':
+                                        feature['hazineparseldurum'] = child.text
+                                    elif tag_name == 'terksebep':
+                                        feature['terksebep'] = child.text
+                                    elif tag_name == 'detayuretimyontem':
+                                        feature['detayuretimyontem'] = child.text
+                                    elif tag_name == 'orjinalgeomwkt':
+                                        feature['orjinalgeomwkt'] = child.text
+                                    elif tag_name == 'orjinalgeomkoordinatsistem':
+                                        feature['orjinalgeomkoordinatsistem'] = child.text
+                                    elif tag_name == 'orjinalgeomuretimyontem':
+                                        feature['orjinalgeomuretimyontem'] = child.text
+                                    elif tag_name == 'dom':
+                                        feature['dom'] = child.text
+                                    elif tag_name == 'epok':
+                                        feature['epok'] = child.text
+                                    elif tag_name == 'detayverikalite':
+                                        feature['detayverikalite'] = child.text
+                                    elif tag_name == 'orjinalgeomepok':
+                                        feature['orjinalgeomepok'] = child.text
+                                    elif tag_name == 'parseltescildurum':
+                                        feature['parseltescildurum'] = child.text
+                                    elif tag_name == 'olcuyontem':
+                                        feature['olcuyontem'] = child.text
+                                    elif tag_name == 'detayarsivonaylikoordinat':
+                                        feature['detayarsivonaylikoordinat'] = child.text
+                                    elif tag_name == 'detaypaftazeminuyumluluk':
+                                        feature['detaypaftazeminuyumluluk'] = child.text
+                                    elif tag_name == 'tesisislemfenkayitref':
+                                        feature['tesisislemfenkayitref'] = child.text
+                                    elif tag_name == 'terkinislemfenkayitref':
+                                        feature['terkinislemfenkayitref'] = child.text
+                                    elif tag_name == 'yanilmasiniri':
+                                        feature['yanilmasiniri'] = child.text
+                                    elif tag_name == 'hesapverikalite':
+                                        feature['hesapverikalite'] = child.text
+                                
+                                # Process geometry
+                                geom = processor.process_geometry_element(elem=elem)
+                                if geom and geom.get('wkt'):
+                                    feature['wkt'] = geom['wkt']
+                                    all_features.append(feature)
+                                
+                            except Exception as e:
+                                logger.error(f"Öğe işlenirken hata oluştu: {e}")
+                                continue
+                
+                    except Exception as e:
+                        logger.error(f"Özellik üyesi {i+1} işlenirken hata oluştu: {e}")
+                        continue
+                
+                logger.info(f"Toplam {len(all_features)} geometri başarıyla işlendi")
+                    
+                if not all_features:
+                    logger.info(f"Bu sayfada parsel verisi bulunamadı")
+                    current_date = current_date + timedelta(days=1)
+                    continue
+                
+                features_count = len(all_features)
+                logger.info(f"Toplam {features_count} parsel özelliği çekildi")
+                
+                # Veritabanına kaydet
+                if all_features:
+                    try:
+                        db.insert_parcels(all_features)
+                        logger.info(f"{len(all_features)} parsel veritabanına kaydedildi")
+                        
+                        # Sonraki sayfa için start_index'i artır
+                        current_index += max_features
+                        
+                        # tk_settings tablosuna güncelleme yap - sadece tarih ve index
+                        db.update_setting(query_date=current_date, start_index=current_index, scrape_type=False)
+                        logger.info(f"Parsel sorgu ayarları güncellendi: query_date={current_date.strftime('%Y-%m-%d')}, start_index={current_index}")
+
+                        # Eğer çekilen parsel sayısı 1000'den azsa, tüm veriler çekilmiş demektir
+                        if features_count < max_features:
+                            logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel çekildi. Tüm veriler çekildi.")
+                            current_date = current_date + timedelta(days=1)
+                    
+                    except Exception as e:
+                        logger.error(f"Veritabanına kaydetme hatası: {e}")
+                        break
+                else:
+                    logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında kaydedilecek parsel verisi bulunamadı")
+                    current_date = current_date + timedelta(days=1)
+                    # Yeni tarihe geçerken ayarları güncelle
+                    db.update_setting(query_date=current_date, start_index=current_index, scrape_type=False)
+                    continue
+                
+            except Exception as e:
+                logger.error(f"Parsel verilerini işlerken hata: {e}")
+                break
+        
+        # İşlem tamamlandığında final güncelleme
+        db.update_setting(query_date=current_date, start_index=current_index, scrape_type=False)
+        
+        if not self.running:
+            logger.info(f"İşlem kullanıcı tarafından durduruldu")
+        else:
+            logger.info(f"Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel çekildi. Tüm veriler çekildi. Son işlenen tarih: {current_date.strftime('%Y-%m-%d')}")
 
 
     def sync_fully_parcels(self, start_index: Optional[int] = 0):
@@ -625,7 +865,11 @@ def main():
         args = parser.parse_args()
 
         if args.daily:
-            pass
+            db = DatabaseManager()
+            last_setting = db.get_last_setting(False)
+            start_index = last_setting.get('start_index', 0)
+            start_date = last_setting.get('query_date', datetime.strptime('2025-10-08', '%Y-%m-%d').date())
+            scraper.sync_daily_parcels(start_date=start_date, start_index=start_index)
         elif args.fully:
             db = DatabaseManager()
             last_setting = db.get_last_setting(True)
