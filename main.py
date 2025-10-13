@@ -328,7 +328,7 @@ class TKGMScraper:
         # TKGMClient instance'ını döngü dışında bir kez oluştur
         client = TKGMClient(typename=os.getenv('PARSELLER', 'TKGM:parseller'), db_manager=db)
         
-        while current_date < end_date:
+        while current_date < end_date and self.running:
             logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında işleniyor")
             
             # CQL filtre oluştur
@@ -351,6 +351,7 @@ class TKGMScraper:
                 if len(feature_members) == 0:
                     logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında feature member bulunamadı, bir sonraki sayfaya geçiliyor")
                     current_date = current_date + timedelta(days=1)
+                    current_index = 0
                     continue
                 
                 # Tüm features'ları toplamak için ana liste
@@ -505,20 +506,21 @@ class TKGMScraper:
                         continue
                 
                 logger.info(f"Toplam {len(all_features)} geometri başarıyla işlendi")
-                    
+                
                 if not all_features:
-                    logger.info(f"Bu sayfada parsel verisi bulunamadı")
+                    logger.info(f"[{current_date}] Index {current_index} - {current_index + max_features} arasında parsel verisi bulunamadı")
                     current_date = current_date + timedelta(days=1)
+                    current_index = 0
                     continue
                 
                 features_count = len(all_features)
-                logger.info(f"Toplam {features_count} parsel özelliği çekildi")
+                logger.info(f"[{current_date}] Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel özelliği çekildi")
                 
                 # Veritabanına kaydet
                 if all_features:
                     try:
                         db.insert_parcels(all_features)
-                        logger.info(f"{len(all_features)} parsel veritabanına kaydedildi")
+                        logger.info(f"[{current_date}] Index {current_index} - {current_index + max_features} arasında {len(all_features)} parsel veritabanına kaydedildi")
                         
                         # Sonraki sayfa için start_index'i artır
                         current_index += max_features
@@ -529,8 +531,9 @@ class TKGMScraper:
 
                         # Eğer çekilen parsel sayısı 1000'den azsa, tüm veriler çekilmiş demektir
                         if features_count < max_features:
-                            logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel çekildi. Tüm veriler çekildi.")
+                            logger.info(f"[{current_date.isoformat()}] Index {current_index - max_features} - {current_index} arasında toplam {features_count} parsel çekildi. Tüm veriler çekildi.")
                             current_date = current_date + timedelta(days=1)
+                            current_index = 0
                     
                     except Exception as e:
                         logger.error(f"Veritabanına kaydetme hatası: {e}")
@@ -538,6 +541,7 @@ class TKGMScraper:
                 else:
                     logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında kaydedilecek parsel verisi bulunamadı")
                     current_date = current_date + timedelta(days=1)
+                    current_index = 0
                     # Yeni tarihe geçerken ayarları güncelle
                     db.update_setting(query_date=current_date, start_index=current_index, scrape_type=False)
                     continue
