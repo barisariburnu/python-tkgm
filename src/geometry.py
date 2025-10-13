@@ -135,8 +135,7 @@ class WFSGeometryProcessor:
         except Exception as e:
             logger.error(f"Koordinat dönüştürme başarısız: {e}")
             raise Exception(f"Koordinat dönüştürme başarısız: {e}")
-           
-    
+     
     def create_wkt_from_rings(self, geom_type: str, rings: List[List[Tuple[float, float]]]) -> str:
         """
         Geometri tipine göre koordinat halkalarından WKT temsili oluşturur.

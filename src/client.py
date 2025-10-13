@@ -39,7 +39,7 @@ class TKGMClient:
         
         # Timeout ve retry ayarları
         self.timeout = 300  # 5 dakika
-        self.max_retries = 3
+        self.running = True
         self.retry_delay = 5  # saniye
         
         logger.info("TKGM İstemci başlatıldı")
@@ -119,10 +119,13 @@ class TKGMClient:
         }
         
         start_time = time.time()
-    
-        for attempt in range(self.max_retries):
+        attempt = 0
+
+        while self.running:
+            attempt += 1
+
             try:
-                logger.info(f"TKGM servisine istek gönderiliyor (Deneme {attempt + 1}/{self.max_retries})")
+                logger.info(f"TKGM servisine istek gönderiliyor (Deneme: {attempt})")
         
                 response = self.session.get(url, timeout=self.timeout)
                 metadata['http_status_code'] = response.status_code
@@ -159,7 +162,7 @@ class TKGMClient:
                 logger.info(f"TKGM servisinden yanıt alındı: {metadata['response_size']} bayt, {metadata['execution_time']:.2f} saniye, {metadata['feature_count']} özellik")
                 
                 # Başarılı sorguyu logla
-                is_success = self.db.insert_log(
+                self.db.insert_log(
                     typename=self.typename,
                     url=url,
                     feature_count=metadata['feature_count'],
@@ -170,21 +173,15 @@ class TKGMClient:
                     response_size=metadata['response_size'],
                     execution_duration=metadata['execution_time']
                 )
-                if is_success:
-                    logger.debug(f"Sorgu başarıyla loglandı: {self.typename}")
-                else:
-                    logger.warning("Sorgu loglama başarısız")
                 
                 return content
             
             except requests.exceptions.Timeout:
-                error_msg = f"İstek zaman aşımına uğradı (Deneme {attempt + 1})"
+                error_msg = f"İstek zaman aşımına uğradı (Deneme: {attempt})"
                 logger.warning(error_msg)
                 metadata['error_message'] = error_msg
                 
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.retry_delay)
-                    continue
+                time.sleep(self.retry_delay)
                     
             except requests.exceptions.HTTPError as e:
                 error_msg = f"HTTP hatası: {e.response.status_code} - {e.response.reason}"
@@ -196,18 +193,14 @@ class TKGMClient:
                 if 400 <= e.response.status_code < 500:
                     break
                     
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.retry_delay)
-                    continue
+                time.sleep(self.retry_delay)
                     
             except requests.exceptions.ConnectionError:
-                error_msg = f"Bağlantı hatası (Deneme {attempt + 1})"
+                error_msg = f"Bağlantı hatası (Deneme: {attempt})"
                 logger.warning(error_msg)
                 metadata['error_message'] = error_msg
                 
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.retry_delay)
-                    continue
+                time.sleep(self.retry_delay)
                     
             except Exception as e:
                 error_msg = f"Beklenmeyen hata: {str(e)}"
@@ -217,23 +210,5 @@ class TKGMClient:
         
         metadata['execution_time'] = time.time() - start_time
         logger.error(f"TKGM servis isteği başarısız: {metadata['error_message']}")
-        
-        # Başarısız sorguyu logla
-        is_success = self.db.insert_log(
-            typename=self.typename,
-            url=url,
-            feature_count=0,
-            is_empty=True,
-            is_successful=False,
-            error_message=metadata['error_message'],
-            http_status_code=metadata['http_status_code'],
-            response_size=metadata['response_size'],
-            execution_duration=metadata['execution_time']
-        )
-
-        if is_success:
-            logger.debug(f"Başarısız sorgu loglandı: {self.typename}")
-        else:
-            logger.warning("Başarısız sorgu loglama başarısız")
         
         return None

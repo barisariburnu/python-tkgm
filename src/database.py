@@ -270,7 +270,7 @@ class DatabaseManager:
                             scrape_type BOOLEAN DEFAULT FALSE,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            UNIQUE(neighbourhood_id, scrape_type)
+                            UNIQUE(scrape_type)
                         );
                     """)
                     
@@ -641,18 +641,18 @@ class DatabaseManager:
         return saved_count
 
 
-    def get_last_setting(self, neighbourhood_id: int, scrape_type: bool = False) -> Optional[Dict[str, Any]]:
+    def get_last_setting(self, scrape_type: bool = False) -> Optional[Dict[str, Any]]:
         """tk_settings tablosundan son kaydı getir"""
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT id, query_date, start_index, scrape_type, neighbourhood_id, created_at, updated_at
+                        SELECT id, query_date, start_index, scrape_type, created_at, updated_at
                         FROM tk_settings 
-                        WHERE neighbourhood_id = %s AND scrape_type = %s
+                        WHERE scrape_type = %s
                         ORDER BY id DESC 
                         LIMIT 1
-                    """, (neighbourhood_id, scrape_type,))
+                    """, (scrape_type,))
                     
                     result = cursor.fetchone()
                     
@@ -663,7 +663,6 @@ class DatabaseManager:
                             'query_date': result['query_date'],
                             'start_index': result['start_index'],
                             'scrape_type': result['scrape_type'],
-                            'neighbourhood_id': result['neighbourhood_id'],
                             'created_at': result['created_at'],
                             'updated_at': result['updated_at']
                         }
@@ -680,7 +679,7 @@ class DatabaseManager:
         """tk_settings tablosuna kayıt ekle veya güncelle (UPSERT)
         
         Args:
-            **kwargs: Eklenecek/güncellenecek alanlar (query_date, start_index, scrape_type, neighbourhood_id)
+            **kwargs: Eklenecek/güncellenecek alanlar (query_date, start_index, scrape_type)
             
         Returns:
             bool: İşlem başarılı ise True, değilse False
@@ -690,13 +689,13 @@ class DatabaseManager:
             return False
             
         # Gerekli alanları kontrol et
-        required_fields = {'neighbourhood_id', 'scrape_type'}
+        required_fields = {'scrape_type'}
         if not all(field in kwargs for field in required_fields):
             logger.warning(f"Gerekli alanlar eksik: {required_fields}")
             return False
             
         # Güncellenebilir alanları kontrol et
-        allowed_fields = {'query_date', 'start_index', 'scrape_type', 'neighbourhood_id'}
+        allowed_fields = {'query_date', 'start_index', 'scrape_type'}
         update_fields = {k: v for k, v in kwargs.items() if k in allowed_fields}
         
         if not update_fields:
@@ -713,7 +712,7 @@ class DatabaseManager:
                     # UPDATE kısmı için set_clauses oluştur (EXCLUDED kullanarak)
                     update_clauses = []
                     for field in insert_fields:
-                        if field not in ['neighbourhood_id', 'scrape_type']:  # UNIQUE constraint alanları hariç
+                        if field not in ['scrape_type']:  # UNIQUE constraint alanları hariç
                             update_clauses.append(f"{field} = EXCLUDED.{field}")
                     
                     # updated_at alanını otomatik güncelle
@@ -722,7 +721,7 @@ class DatabaseManager:
                     query = f"""
                         INSERT INTO tk_settings ({', '.join(insert_fields)})
                         VALUES ({', '.join(['%s'] * len(insert_values))})
-                        ON CONFLICT (neighbourhood_id, scrape_type)
+                        ON CONFLICT (scrape_type)
                         DO UPDATE SET {', '.join(update_clauses)}
                     """
                     
@@ -730,7 +729,7 @@ class DatabaseManager:
                     
                     if cursor.rowcount > 0:
                         conn.commit()
-                        logger.info(f"Ayar kaydı başarıyla eklendi/güncellendi (neighbourhood_id: {kwargs.get('neighbourhood_id')}, scrape_type: {kwargs.get('scrape_type')})")
+                        logger.info(f"Ayar kaydı başarıyla eklendi/güncellendi (scrape_type: {kwargs.get('scrape_type')})")
                         return True
                     else:
                         logger.warning("Hiçbir kayıt etkilenmedi")
