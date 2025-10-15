@@ -135,7 +135,7 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Cron job'ları ayarla
-RUN echo "0 7 * * * root cd /app && /usr/bin/python3 /app/main.py >> /app/logs/cron.log 2>&1" > /etc/cron.d/tkgm && \
+RUN echo "0 7 * * * root cd /app && /usr/bin/python3 /app/main.py --daily >> /app/logs/cron.log 2>&1" > /etc/cron.d/tkgm && \
     echo "0 8 * * * root cd /app && /app/scripts/sync.sh >> /app/logs/cron.log 2>&1" >> /etc/cron.d/tkgm && \
     echo "" >> /etc/cron.d/tkgm && \
     chmod 0644 /etc/cron.d/tkgm
