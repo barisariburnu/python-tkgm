@@ -19,11 +19,11 @@ class DatabaseManager:
         # .env dosyasını yükle
         load_dotenv()
         
-        self.host = os.getenv('DB_HOST')
-        self.database = os.getenv('DB_NAME')
-        self.port = int(os.getenv('DB_PORT', 5432))
-        self.user = os.getenv('DB_USER')
-        self.password = os.getenv('DB_PASSWORD')
+        self.host = os.getenv('POSTGRES_HOST')
+        self.database = os.getenv('POSTGRES_DB')
+        self.port = int(os.getenv('POSTGRES_PORT', 5432))
+        self.user = os.getenv('POSTGRES_USER')
+        self.password = os.getenv('POSTGRES_PASS')
         
         self.connection_string = f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
     
@@ -87,7 +87,7 @@ class DatabaseManager:
                 with conn.cursor() as cursor:
                     # Parseller tablosu - tüm alanları içeren yeni yapı
                     cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS tk_parseller (
+                        CREATE TABLE IF NOT EXISTS tk_parsel (
                             id SERIAL PRIMARY KEY,
                             fid BIGINT,
                             parselno BIGINT,
@@ -133,29 +133,29 @@ class DatabaseManager:
                     
                     # Geometri indeksleri
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_parseller_geom 
-                        ON tk_parseller USING GIST (geom);
+                        CREATE INDEX IF NOT EXISTS idx_tk_parsel_geom 
+                        ON tk_parsel USING GIST (geom);
                     """)
                     
                     # Diğer indeksler
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_parseller_tapukimlikno 
-                        ON tk_parseller (tapukimlikno);
+                        CREATE INDEX IF NOT EXISTS idx_tk_parsel_tapukimlikno 
+                        ON tk_parsel (tapukimlikno);
                     """)
                     
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_parseller_parselno 
-                        ON tk_parseller (parselno);
+                        CREATE INDEX IF NOT EXISTS idx_tk_parsel_parselno 
+                        ON tk_parsel (parselno);
                     """)
                     
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_parseller_adano 
-                        ON tk_parseller (adano);
+                        CREATE INDEX IF NOT EXISTS idx_tk_parsel_adano 
+                        ON tk_parsel (adano);
                     """)
                     
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_parseller_sistemkayittarihi 
-                        ON tk_parseller (sistemkayittarihi);
+                        CREATE INDEX IF NOT EXISTS idx_tk_parsel_sistemkayittarihi 
+                        ON tk_parsel (sistemkayittarihi);
                     """)
                     
                     # Sorgu geçmişi tablosu
@@ -202,7 +202,7 @@ class DatabaseManager:
                     
                     # İlçe tablosu
                     cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS tk_ilceler (
+                        CREATE TABLE IF NOT EXISTS tk_ilce (
                             id SERIAL PRIMARY KEY,
                             fid BIGINT,
                             ilref BIGINT,
@@ -218,19 +218,19 @@ class DatabaseManager:
                     
                     # Geometri indeksleri
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_ilceler_geom 
-                        ON tk_ilceler USING GIST (geom);
+                        CREATE INDEX IF NOT EXISTS idx_tk_ilce_geom 
+                        ON tk_ilce USING GIST (geom);
                     """)
                     
                     # Diğer indeksler
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_ilceler_tapukimlikno 
-                        ON tk_ilceler (tapukimlikno);
+                        CREATE INDEX IF NOT EXISTS idx_tk_ilce_tapukimlikno 
+                        ON tk_ilce (tapukimlikno);
                     """)
                     
                     # Mahalle tablosu
                     cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS tk_mahalleler (
+                        CREATE TABLE IF NOT EXISTS tk_mahalle (
                             id SERIAL PRIMARY KEY,
                             fid BIGINT,
                             ilceref BIGINT,
@@ -249,14 +249,14 @@ class DatabaseManager:
                     
                     # Geometri indeksleri
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_mahalleler_geom 
-                        ON tk_mahalleler USING GIST (geom);
+                        CREATE INDEX IF NOT EXISTS idx_tk_mahalle_geom 
+                        ON tk_mahalle USING GIST (geom);
                     """)
                     
                     # Diğer indeksler
                     cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_tk_mahalleler_tapukimlikno 
-                        ON tk_mahalleler (tapukimlikno);
+                        CREATE INDEX IF NOT EXISTS idx_tk_mahalle_tapukimlikno 
+                        ON tk_mahalle (tapukimlikno);
                     """)
                     
                     # Ayarlar tablosu   
@@ -328,9 +328,9 @@ class DatabaseManager:
                 try:
                     with self.get_connection() as conn:
                         with conn.cursor() as cursor:
-                            # tk_ilceler tablosuna ekle/güncelle
+                            # tk_ilce tablosuna ekle/güncelle
                             cursor.execute("""
-                            INSERT INTO tk_ilceler (fid, tapukimlikno, ilref, ad, durum, geom)
+                            INSERT INTO tk_ilce (fid, tapukimlikno, ilref, ad, durum, geom)
                             VALUES (%s, %s, %s, %s, %s, ST_GeomFromText(%s, 2320))
                             ON CONFLICT (tapukimlikno) DO UPDATE SET
                                 fid = EXCLUDED.fid,
@@ -418,9 +418,9 @@ class DatabaseManager:
                 try:
                     with self.get_connection() as conn:
                         with conn.cursor() as cursor:
-                            # tk_mahalleler tablosuna ekle/güncelle
+                            # tk_mahalle tablosuna ekle/güncelle
                             cursor.execute("""
-                            INSERT INTO tk_mahalleler (
+                            INSERT INTO tk_mahalle (
                                 fid, ilceref, tapukimlikno, durum, sistemkayittarihi,
                                 tip, tapumahallead, kadastromahallead, geom
                             ) VALUES (
@@ -518,9 +518,9 @@ class DatabaseManager:
                 try:
                     with self.get_connection() as conn:
                         with conn.cursor() as cursor:
-                            # tk_parseller tablosuna ekle/güncelle
+                            # tk_parsel tablosuna ekle/güncelle
                             cursor.execute("""
-                            INSERT INTO tk_parseller (
+                            INSERT INTO tk_parsel (
                                 fid, parselno, adano, tapukimlikno, tapucinsaciklama,
                                 tapuzeminref, tapumahalleref, tapualan, tip, belirtmetip,
                                 durum, sistemkayittarihi, onaydurum, kadastroalan,
@@ -747,26 +747,26 @@ class DatabaseManager:
                     stats = {}
                     
                     # Parsel istatistikleri
-                    cursor.execute("SELECT COUNT(*) as count FROM tk_parseller")
+                    cursor.execute("SELECT COUNT(*) as count FROM tk_parsel")
                     result = cursor.fetchone()
                     stats['total_parcels'] = result['count'] if result else 0
                     
                     cursor.execute("""
-                        SELECT COUNT(*) as count FROM tk_parseller 
+                        SELECT COUNT(*) as count FROM tk_parsel 
                         WHERE created_at >= CURRENT_DATE
                     """)
                     result = cursor.fetchone()
                     stats['parcels_today'] = result['count'] if result else 0
                     
                     cursor.execute("""
-                        SELECT COUNT(*) as count FROM tk_parseller 
+                        SELECT COUNT(*) as count FROM tk_parsel 
                         WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
                     """)
                     result = cursor.fetchone()
                     stats['parcels_last_week'] = result['count'] if result else 0
                     
                     cursor.execute("""
-                        SELECT COALESCE(SUM(tapualan), 0) as total_area FROM tk_parseller 
+                        SELECT COALESCE(SUM(tapualan), 0) as total_area FROM tk_parsel 
                         WHERE tapualan IS NOT NULL
                     """)
                     result = cursor.fetchone()
@@ -774,7 +774,7 @@ class DatabaseManager:
                     
                     cursor.execute("""
                         SELECT MIN(sistemkayittarihi) as min_date, MAX(sistemkayittarihi) as max_date 
-                        FROM tk_parseller 
+                        FROM tk_parsel 
                         WHERE sistemkayittarihi IS NOT NULL
                     """)
                     date_range = cursor.fetchone()
@@ -784,12 +784,12 @@ class DatabaseManager:
                     }
                     
                     # İlçe istatistikleri
-                    cursor.execute("SELECT COUNT(*) as count FROM tk_ilceler")
+                    cursor.execute("SELECT COUNT(*) as count FROM tk_ilce")
                     result = cursor.fetchone()
                     stats['total_districts'] = result['count'] if result else 0
                     
                     # Mahalle istatistikleri
-                    cursor.execute("SELECT COUNT(*) as count FROM tk_mahalleler")
+                    cursor.execute("SELECT COUNT(*) as count FROM tk_mahalle")
                     result = cursor.fetchone()
                     stats['total_neighbourhoods'] = result['count'] if result else 0
                     
@@ -814,7 +814,7 @@ class DatabaseManager:
                     
                     # En son güncelleme tarihi
                     cursor.execute("""
-                        SELECT MAX(updated_at) as last_update FROM tk_parseller
+                        SELECT MAX(updated_at) as last_update FROM tk_parsel
                     """)
                     last_update = cursor.fetchone()
                     stats['last_update'] = last_update['last_update'].strftime('%Y-%m-%d %H:%M:%S') if last_update and last_update['last_update'] else None
@@ -916,7 +916,7 @@ class DatabaseManager:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         SELECT tapukimlikno, tapumahallead, kadastromahallead, ilceref
-                        FROM tk_mahalleler 
+                        FROM tk_mahalle 
                         WHERE tapukimlikno IS NOT NULL
                         ORDER BY tapukimlikno
                     """)

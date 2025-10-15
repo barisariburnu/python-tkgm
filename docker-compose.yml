@@ -1,0 +1,39 @@
+services:
+  # Ana Uygulama
+  tkgm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tkgm
+    environment:
+      # PostgreSQL veritabanı bağlantı bilgileri
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASS: ${POSTGRES_PASS}
+
+      # Oracle veritabanı bağlantı bilgileri
+      ORACLE_HOST: ${ORACLE_HOST:-}
+      ORACLE_PORT: ${ORACLE_PORT:-1521}
+      ORACLE_SERVICE_NAME: ${ORACLE_SERVICE_NAME:-}
+      ORACLE_USER: ${ORACLE_USER:-}
+      ORACLE_PASS: ${ORACLE_PASS:-}
+
+      # WFS servis bilgileri
+      TKGM_USERNAME: ${TKGM_USERNAME:-}
+      TKGM_PASSWORD: ${TKGM_PASSWORD:-}
+      TKGM_BASE_URL: ${TKGM_BASE_URL:-https://cbsservis.tkgm.gov.tr/tkgm.ows/wfs}
+
+      # Uygulama ayarları
+      MAX_FEATURES: ${MAX_FEATURES:-1000}
+      STARTINDEX: ${STARTINDEX:-0}
+      LOG_FILE: ${LOG_FILE:-logs/scraper.log}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    restart: unless-stopped
+    command: ["/entrypoint.sh"]
+    stdin_open: true
+    tty: true

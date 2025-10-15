@@ -315,15 +315,15 @@ class TKGMScraper:
             return
 
 
-    def sync_daily_parcels(self, start_date: Optional[date] = None, start_index: Optional[int] = 0):
+    def sync_daily_parcels(self, start_date: Optional[datetime] = None, start_index: Optional[int] = 0):
         """Günlük parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
         logger.info(f"Günlük parsel verilerini senkronize etme işlemi başlatılıyor...")
-        max_features = os.getenv('MAX_FEATURES', 1000)
+        max_features = int(os.getenv('MAX_FEATURES', 1000))
         
         db = DatabaseManager()
         current_index = start_index
-        current_date = start_date if start_date else (date.today() - timedelta(days=1))
-        end_date = date.today()
+        current_date = start_date if start_date else (datetime.now() - timedelta(days=1))
+        end_date = datetime.now()
                 
         # TKGMClient instance'ını döngü dışında bir kez oluştur
         client = TKGMClient(typename=os.getenv('PARSELLER', 'TKGM:parseller'), db_manager=db)
@@ -872,7 +872,7 @@ def main():
             db = DatabaseManager()
             last_setting = db.get_last_setting(False)
             start_index = last_setting.get('start_index', 0)
-            start_date = last_setting.get('query_date', datetime.strptime('2025-10-08', '%Y-%m-%d').date())
+            start_date = last_setting.get('query_date', datetime.strptime('2025-10-08', '%Y-%m-%d'))
             scraper.sync_daily_parcels(start_date=start_date, start_index=start_index)
         elif args.fully:
             db = DatabaseManager()
