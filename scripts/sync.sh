@@ -118,54 +118,36 @@ test_connections() {
 get_sql_query() {
     cat << 'EOF'
 SELECT 
-    p.id AS "ID",
-    p.fid AS "FID",
-    p.parselno AS "PARSEL_NO",
-    p.adano AS "ADA_NO",
-    p.tapukimlikno AS "TAPU_KIMLIK_NO",
-    p.tapucinsaciklama AS "TAPU_CINS_ACIKLAMA",
-    p.tapuzeminref AS "TAPU_ZEMIN_REF",
-    m.ilceref AS "ILCE_REF",
-    i.ad AS "ILCE_ADI", 
-    p.tapumahalleref AS "TAPU_MAHALLE_REF",
-    m.tapumahallead AS "TAPU_MAHALLE_ADI",
-    p.tapualan AS "TAPU_ALAN",
-    p.tip AS "TIP",
-    p.belirtmetip AS "BELIRTME_TIP",
-    p.durum AS "DURUM",
-    d.adi AS "DURUM_ACIKLAMA", 
-    p.geom AS "GEOM", 
-    TO_CHAR(p.sistemkayittarihi, 'YYYY-MM-DD HH24:MI:SS') AS "SISTEM_KAYIT_TARIHI",
-    p.onaydurum AS "ONAY_DURUM",
-    od.adi AS "ONAY_DURUM_ACIKLAMA", 
-    p.kadastroalan AS "KADASTRO_ALAN",
-    p.tapucinsid AS "TAPU_CINS_ID", 
-    TO_CHAR(p.sistemguncellemetarihi, 'YYYY-MM-DD HH24:MI:SS') AS "SISTEM_GUNCELLEME_TARIHI",
-    p.kmdurum AS "KM_DURUM",
-    kmd.adi AS "KM_DURUM_ACIKLAMASI", 
-    p.hazineparseldurum AS "HAZINE_PARSEL_DURUM",
-    hpd.adi AS "HAZINE_PARSEL_DURUM_ACIKLAMA",
-    p.terksebep AS "TERK_SEBEP",
-    p.detayuretimyontem AS "DETAY_URETIM_YONTEM",
-    p.orjinalgeomwkt AS "ORJINAL_GEOM_WKT",
-    p.orjinalgeomkoordinatsistem AS "ORJINAL_GEOM_KOORDINAT_SISTEM",
-    p.orjinalgeomuretimyontem AS "ORJINAL_GEOM_URETIM_YONTEM",
-    p.dom AS "DOM",
-    p.epok AS "EPOK",
-    p.detayverikalite AS "DETAY_VERI_KALITE",
-    p.orjinalgeomepok AS "ORJINAL_GEOM_EPOK",
-    p.parseltescildurum AS "PARSEL_TESCIL_DURUM",
-    p.olcuyontem AS "OLCU_YONTEM",
-    p.detayarsivonaylikoordinat AS "DETAY_ARSIV_ONAYLI_KOORDINAT",
-    p.detaypaftazeminuyumluluk AS "DETAY_PAFTAZEMIN_UYUMLULUK",
-    p.tesisislemfenkayitref AS "TESIS_ISLEM_FENKAYIT_REF",
-    p.terkinislemfenkayitref AS "TERKIN_ISLEM_FENKAYIT_REF",
-    p.yanilmasiniri AS "YANILMA_SINIRI",
-    p.hesapverikalite AS "HESAP_VERI_KALITE",
+    p.adano AS "ADA",
+    p.tapualan AS "ALAN",
     COALESCE(p.adano, ' ') || '-' || COALESCE(p.parselno, ' ') || '-' || 
     COALESCE(i.ad, ' ') || '-' || COALESCE(m.tapumahallead, ' ') AS "APIM", 
-    TO_CHAR(p.created_at, 'YYYY-MM-DD HH24:MI:SS') AS "CREATED_AT",
-    TO_CHAR(p.updated_at, 'YYYY-MM-DD HH24:MI:SS') AS "UPDATED_AT"
+    p.durum AS "DURUM",
+    d.adi AS "DURUM_ACIKLAMA", 
+    p.fid AS "FID",
+    p.geom AS "GEOM", 
+    p.hazineparseldurum AS "HAZINE_PARSEL_DURUM",
+    hpd.adi AS "HAZINE_PARSEL_DURUM_ACIKLAMA",
+    i.ad AS "ILCE_ADI", 
+    m.ilceref AS "ILCE_ID",    
+    p.kadastroalan AS "KADASTRO_ALAN",
+    p.kmdurum AS "KM_DURUM",
+    kmd.adi AS "KM_DURUM_ACIKLAMASI", 
+    TO_CHAR(p.sistemguncellemetarihi, 'YYYY-MM-DD HH24:MI:SS') AS "M_DATE",
+    p.id AS "OBJECT_ID",
+    p.onaydurum AS "ONAY_DURUM",
+    od.adi AS "ONAY_DURUM_ACIKLAMA", 
+    p.parselno AS "PARSEL",
+    TO_CHAR(p.sistemkayittarihi, 'YYYY-MM-DD HH24:MI:SS') AS "SISTEM_KAYIT_TARIHI",
+    p.tapucinsaciklama AS "TAPU_CINS_ACIKLAMA",
+    p.tapucinsid AS "TAPU_CINS_ID", 
+    p.tapukimlikno AS "TAPU_KIMLIK_NO",
+    m.tapumahallead AS "TAPU_MAHALLE_ADI",
+    m.fid AS "TAPU_MAHALLE_ID",
+    p.tapumahalleref AS "TAPU_MAHALLE_REF",
+    p.tapuzeminref AS "TAPU_ZEMIN_REF",
+    p.tip AS "TIP",
+    p.tapuzeminref AS "ZEMIN_ID",    
 FROM public.tk_parsel p
 LEFT JOIN public.tk_kat_mulkiyet_durum_tip kmd ON kmd.kod = p.kmdurum 
 LEFT JOIN public.tk_hazine_parsel_durum_tip hpd ON hpd.kod = p.hazineparseldurum 
@@ -204,14 +186,14 @@ check_and_prepare_table() {
     log "Checking Oracle table status..."
     
     local check_sql
-    check_sql=$(cat << 'EOF'
+    check_sql=$(cat << EOF
 SET SERVEROUTPUT ON
 DECLARE
     table_exists NUMBER;
 BEGIN
     SELECT COUNT(*) INTO table_exists 
     FROM user_tables 
-    WHERE table_name = 'TK_PARSELLER';
+    WHERE table_name = '$ORACLE_TABLE';
     
     IF table_exists > 0 THEN
         DBMS_OUTPUT.PUT_LINE('EXISTS');
@@ -240,19 +222,19 @@ truncate_oracle_table() {
     log "Truncating Oracle table: $ORACLE_TABLE"
     
     local truncate_sql
-    truncate_sql=$(cat << 'EOF'
+    truncate_sql=$(cat << EOF
 DECLARE
     v_sequence_name VARCHAR2(100);
 BEGIN
     -- Tabloyu truncate et
-    EXECUTE IMMEDIATE 'TRUNCATE TABLE TK_PARSELLER';
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE $ORACLE_TABLE';
     DBMS_OUTPUT.PUT_LINE('Table truncated successfully');
     
     -- OGR_FID ile ilişkili sequence'i bul ve sıfırla
     BEGIN
         SELECT sequence_name INTO v_sequence_name
         FROM user_sequences
-        WHERE sequence_name LIKE '%TK_PARSELLER%'
+        WHERE sequence_name LIKE '%' || '$ORACLE_TABLE' || '%'
         AND ROWNUM = 1;
         
         -- Sequence'i drop et
@@ -370,11 +352,11 @@ create_spatial_index() {
     log "Creating spatial index..."
     
     local index_sql
-    index_sql=$(cat << 'EOF'
+    index_sql=$(cat << EOF
 BEGIN
     -- Spatial index oluştur
     EXECUTE IMMEDIATE 
-    'CREATE INDEX TK_PARSELLER_GEOM_IDX ON TK_PARSELLER(GEOM) 
+    'CREATE INDEX ${ORACLE_TABLE}_GEOM_IDX ON ${ORACLE_TABLE}(GEOM) 
      INDEXTYPE IS MDSYS.SPATIAL_INDEX 
      PARAMETERS(''SDO_INDX_DIMS=2'')';
     
