@@ -118,36 +118,36 @@ test_connections() {
 get_sql_query() {
     cat << 'EOF'
 SELECT 
-    p.adano AS "ADA",
-    p.tapualan AS "ALAN",
-    COALESCE(p.adano, ' ') || '-' || COALESCE(p.parselno, ' ') || '-' || 
-    COALESCE(i.ad, ' ') || '-' || COALESCE(m.tapumahallead, ' ') AS "APIM", 
-    p.durum AS "DURUM",
-    d.adi AS "DURUM_ACIKLAMA", 
-    p.fid AS "FID",
-    p.geom AS "GEOM", 
-    p.hazineparseldurum AS "HAZINE_PARSEL_DURUM",
-    hpd.adi AS "HAZINE_PARSEL_DURUM_ACIKLAMA",
-    i.ad AS "ILCE_ADI", 
-    m.ilceref AS "ILCE_ID",    
-    p.kadastroalan AS "KADASTRO_ALAN",
-    p.kmdurum AS "KM_DURUM",
-    kmd.adi AS "KM_DURUM_ACIKLAMASI", 
-    TO_CHAR(p.sistemguncellemetarihi, 'YYYY-MM-DD HH24:MI:SS') AS "M_DATE",
-    p.id AS "OBJECT_ID",
-    p.onaydurum AS "ONAY_DURUM",
-    od.adi AS "ONAY_DURUM_ACIKLAMA", 
-    p.parselno AS "PARSEL",
-    TO_CHAR(p.sistemkayittarihi, 'YYYY-MM-DD HH24:MI:SS') AS "SISTEM_KAYIT_TARIHI",
-    p.tapucinsaciklama AS "TAPU_CINS_ACIKLAMA",
-    p.tapucinsid AS "TAPU_CINS_ID", 
-    p.tapukimlikno AS "TAPU_KIMLIK_NO",
-    m.tapumahallead AS "TAPU_MAHALLE_ADI",
-    m.fid AS "TAPU_MAHALLE_ID",
-    p.tapumahalleref AS "TAPU_MAHALLE_REF",
-    p.tapuzeminref AS "TAPU_ZEMIN_REF",
-    p.tip AS "TIP",
-    p.tapuzeminref AS "ZEMIN_ID" 
+    CAST(p.id AS NUMERIC(38,0)) AS "OBJECT_ID",
+    CAST(p.fid AS NUMERIC(20,0)) AS "FID",
+    CAST(p.tapukimlikno AS NUMERIC(20,0)) AS "TAPU_KIMLIK_NO",
+    CAST(m.ilceref AS NUMERIC(38,0)) AS "ILCE_ID",   
+    CAST(i.ad AS VARCHAR(100)) AS "ILCE_ADI", 
+    CAST(m.fid AS NUMERIC(38,0)) AS "TAPU_MAHALLE_ID",
+    CAST(p.tapumahalleref AS NUMERIC(20,0)) AS "TAPU_MAHALLE_REF",
+    CAST(m.tapumahallead AS VARCHAR(100)) AS "TAPU_MAHALLE_ADI",
+    CAST(p.tapuzeminref AS NUMERIC(20,0)) AS "TAPU_ZEMIN_REF",
+    CAST(p.tapuzeminref AS NUMERIC(20,0)) AS "ZEMIN_ID",
+    CAST(p.adano AS VARCHAR(255)) AS "ADA",
+    CAST(p.parselno AS VARCHAR(255)) AS "PARSEL",
+    CAST(p.tip AS NUMERIC(38,0)) AS "TIP",
+    CAST(p.tapualan AS FLOAT) AS "ALAN", 
+    CAST(p.kadastroalan AS FLOAT) AS "KADASTRO_ALAN",  
+    CAST(p.tapucinsid AS NUMERIC(20,0)) AS "TAPU_CINS_ID",  
+    CAST(p.tapucinsaciklama AS VARCHAR(1000)) AS "TAPU_CINS_ACIKLAMA", 
+    CAST(p.durum AS NUMERIC(38,0)) AS "DURUM",
+    CAST(d.adi AS VARCHAR(255)) AS "DURUM_ACIKLAMA", 
+    CAST(p.hazineparseldurum AS NUMERIC(38,0)) AS "HAZINE_PARSEL_DURUM",
+    CAST(hpd.adi AS VARCHAR(255)) AS "HAZINE_PARSEL_DURUM_ACIKLAMA",
+    CAST(p.kmdurum AS NUMERIC(38,0)) AS "KM_DURUM",
+    CAST(kmd.adi AS VARCHAR(255)) AS "KM_DURUM_ACIKLAMASI", 
+    CAST(p.onaydurum AS NUMERIC(38,0)) AS "ONAY_DURUM",
+    CAST(od.adi AS VARCHAR(255)) AS "ONAY_DURUM_ACIKLAMA", 
+    CAST(p.sistemkayittarihi AS timestamp(6)) AS "SISTEM_KAYIT_TARIHI",
+    CAST(TO_CHAR(p.sistemguncellemetarihi, 'YYYY-MM-DD HH24:MI:SS') AS VARCHAR(4000)) AS "M_DATE",
+    CAST(COALESCE(p.adano::text, '') || '-' || COALESCE(p.parselno::text, '') || '-' || 
+         COALESCE(i.ad, '') || '-' || COALESCE(m.tapumahallead, '') AS VARCHAR(4000)) AS "APIM",
+    p.geom AS "GEOMETRY"
 FROM public.tk_parsel p
 LEFT JOIN public.tk_kat_mulkiyet_durum_tip kmd ON kmd.kod = p.kmdurum 
 LEFT JOIN public.tk_hazine_parsel_durum_tip hpd ON hpd.kod = p.hazineparseldurum 
@@ -295,6 +295,9 @@ sync_data() {
             -sql "$sql_query" \
             -nln "$ORACLE_TABLE" \
             -append \
+            -lco LAUNDER=NO \
+            -lco GEOMETRY_NAME=GEOMETRY \
+            -lco PRECISION=YES \
             -skipfailures \
             -a_srs "EPSG:2320" \
             -gt 65536 \
@@ -312,11 +315,12 @@ sync_data() {
             -nln "$ORACLE_TABLE" \
             -nlt MULTIPOLYGON \
             -lco LAUNDER=NO \
-            -lco GEOMETRY_NAME=GEOM \
+            -lco GEOMETRY_NAME=GEOMETRY \
             -lco DIM=2 \
             -lco SRID=2320 \
             -lco INDEX=NO \
             -lco SPATIAL_INDEX=NO \
+            -lco PRECISION=YES \
             -a_srs "EPSG:2320" \
             -gt 65536 \
             -progress \
@@ -356,7 +360,7 @@ create_spatial_index() {
 BEGIN
     -- Spatial index oluştur
     EXECUTE IMMEDIATE 
-    'CREATE INDEX ${ORACLE_TABLE}_GEOM_IDX ON ${ORACLE_TABLE}(GEOM) 
+    'CREATE INDEX ${ORACLE_TABLE}_GEOMETRY_IDX ON ${ORACLE_TABLE}(GEOMETRY) 
      INDEXTYPE IS MDSYS.SPATIAL_INDEX 
      PARAMETERS(''SDO_INDX_DIMS=2'')';
     
