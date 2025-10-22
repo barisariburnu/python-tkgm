@@ -44,7 +44,7 @@ load_config() {
     ORACLE_SERVICE_NAME="${ORACLE_SERVICE_NAME:-ORCL}"
     ORACLE_USER="${ORACLE_USER:-cadastral}"
     ORACLE_PASS="${ORACLE_PASS:-password}"
-    ORACLE_TABLE="TK_PARSELLER"
+    ORACLE_TABLE="${ORACLE_TABLE:-TK_PARSEL}"
     
     # Sync mode: truncate or recreate
     SYNC_MODE="${SYNC_MODE:-truncate}"
