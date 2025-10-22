@@ -147,7 +147,7 @@ SELECT
     p.tapumahalleref AS "TAPU_MAHALLE_REF",
     p.tapuzeminref AS "TAPU_ZEMIN_REF",
     p.tip AS "TIP",
-    p.tapuzeminref AS "ZEMIN_ID",    
+    p.tapuzeminref AS "ZEMIN_ID" 
 FROM public.tk_parsel p
 LEFT JOIN public.tk_kat_mulkiyet_durum_tip kmd ON kmd.kod = p.kmdurum 
 LEFT JOIN public.tk_hazine_parsel_durum_tip hpd ON hpd.kod = p.hazineparseldurum 
