@@ -290,7 +290,7 @@ sync_data() {
         # Tablo var - APPEND modu
         log "Using APPEND mode (table exists)..."
         ogr2ogr -f "OCI" \
-            "OCI:${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}" \
+            "OCI:${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}:${ORACLE_TABLE}" \
             "PG:host=${POSTGRES_HOST} port=${POSTGRES_PORT} dbname=${POSTGRES_DB} user=${POSTGRES_USER} password=${POSTGRES_PASS}" \
             -sql "$sql_query" \
             -nln "$ORACLE_TABLE" \
@@ -298,6 +298,7 @@ sync_data() {
             -lco LAUNDER=NO \
             -lco GEOMETRY_NAME=GEOMETRY \
             -lco PRECISION=YES \
+	    -lco SRID=2320 \
             -skipfailures \
             -a_srs "EPSG:2320" \
             -gt 65536 \
@@ -309,7 +310,7 @@ sync_data() {
         # Tablo yok - CREATE modu
         log "Using CREATE mode (table will be created)..."
         ogr2ogr -f "OCI" \
-            "OCI:${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}" \
+            "OCI:${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}:${ORACLE_TABLE}" \
             "PG:host=${POSTGRES_HOST} port=${POSTGRES_PORT} dbname=${POSTGRES_DB} user=${POSTGRES_USER} password=${POSTGRES_PASS}" \
             -sql "$sql_query" \
             -nln "$ORACLE_TABLE" \
