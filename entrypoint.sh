@@ -7,7 +7,7 @@ echo "Starting cron service..."
 service cron start
 
 # Cron konfigürasyonunu yükle
-crontab /etc/cron.d/sync
+crontab /etc/cron.d/tkgm
 
 # Log dosyasını oluştur ve takip et
 touch /app/logs/cron.log
