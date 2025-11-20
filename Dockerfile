@@ -57,6 +57,10 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install uv (fast Python package manager) and add to PATH
+RUN curl -Ls https://astral.sh/uv/install.sh | sh
+ENV PATH=/root/.local/bin:$PATH
+
 # Oracle Instant Client kurulumu - GDAL'dan ÖNCE
 COPY oracle-client/instantclient-basic-linux.x64-21.16.0.0.0dbru.zip /tmp/
 COPY oracle-client/instantclient-sqlplus-linux.x64-21.16.0.0.0dbru.zip /tmp/
@@ -86,11 +90,14 @@ ENV ORACLE_HOME=/usr/lib/oracle/instantclient \
     OCI_LIB_DIR=/usr/lib/oracle/instantclient \
     OCI_INCLUDE_DIR=/usr/lib/oracle/instantclient/sdk/include
 
+# GDAL sürümünü parametrize et
+ARG GDAL_VERSION=3.8.0
+
 # GDAL'ı Oracle desteğiyle kaynak koddan derle
 RUN cd /tmp \
-    && wget https://github.com/OSGeo/gdal/releases/download/v3.8.0/gdal-3.8.0.tar.gz \
-    && tar -xzf gdal-3.8.0.tar.gz \
-    && cd gdal-3.8.0 \
+    && wget https://github.com/OSGeo/gdal/releases/download/v${GDAL_VERSION}/gdal-${GDAL_VERSION}.tar.gz \
+    && tar -xzf gdal-${GDAL_VERSION}.tar.gz \
+    && cd gdal-${GDAL_VERSION} \
     && mkdir build && cd build \
     && cmake .. \
         -DCMAKE_INSTALL_PREFIX=/usr \
@@ -108,7 +115,7 @@ RUN cd /tmp \
     && make -j$(nproc) \
     && make install \
     && ldconfig \
-    && cd /tmp && rm -rf gdal-3.8.0*
+    && cd /tmp && rm -rf gdal-${GDAL_VERSION}*
 
 # Python için sembolik link
 RUN ln -s /usr/bin/python3 /usr/bin/python
@@ -123,8 +130,9 @@ WORKDIR /app
 # requirements.txt kopyala
 COPY requirements.txt /app/requirements.txt
 
-# Bağımlılıkları yükle
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Bağımlılıkları uv ile yükle (system site-packages)
+RUN uv pip install --system -r requirements.txt \
+    && python3 -c "from osgeo import gdal; print(gdal.__version__)" || (echo "GDAL Python binding missing" && exit 1)
 
 # Scripts kopyala
 COPY scripts/sync.sh /app/scripts/sync.sh
@@ -149,8 +157,9 @@ RUN printenv | grep -v "no_proxy" >> /etc/environment
 # Uygulama dosyalarını kopyala
 COPY . /app/
 
-# OCI driver'ı test et
-RUN ogrinfo --formats | grep -i oci || echo "Warning: OCI driver not found"
+# Sürümleri ve sürücüleri test et
+RUN ogrinfo --formats | grep -i oci || echo "Warning: OCI driver not found" \
+    && python3 -c "from osgeo import gdal; print('GDAL Python binding OK, version:', gdal.__version__)"
 
 # Entrypoint ile başlat
 ENTRYPOINT ["/entrypoint.sh"]

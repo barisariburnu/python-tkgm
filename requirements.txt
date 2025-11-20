@@ -4,3 +4,4 @@ python-dotenv==1.0.0
 shapely>=2.0.2
 loguru==0.7.2
 pyproj>=3.7.1
+GDAL==3.8.0

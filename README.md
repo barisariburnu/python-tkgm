@@ -39,6 +39,7 @@ TKGM WFS servisinden parsel, mahalle ve ilçe verilerini otomatik olarak çeker,
 3. Python ortamı (Docker kullanmadan):
    - `python -m venv venv && venv\Scripts\activate` (Windows)
    - `pip install -r requirements.txt`
+   - Alternatif (önerilen): `uv pip install -r requirements.txt`
 4. Docker ile çalıştırma (önerilir):
    - `docker compose up -d --build`
    - Container içinde cron görevleriyle planlı çalışır.
@@ -60,6 +61,62 @@ TKGM WFS servisinden parsel, mahalle ve ilçe verilerini otomatik olarak çeker,
 - Geometri işleme EPSG:4326 kaynak CRS’den EPSG:2320 hedef CRS’ye `pyproj` ile yapılır.
 - WKT üretimi `shapely` ile; PostgreSQL’e `ST_GeomFromText(wkt, 2320)` kullanılarak yazılır.
 - Upsert anahtarı: `(tapukimlikno, tapuzeminref)` benzersiz kayıt kontrolü.
+
+## GDAL Binding ve Fallback Davranışı
+- Proje, geometri dönüşümünde öncelikle GDAL Python binding’i kullanır. GDAL mevcut değilse otomatik olarak Shapely+PyProj fallback’i devreye girer.
+- `src/geometry.py` içinde `GDAL_AVAILABLE` bayrağı ile durum kontrol edilir. Başlatma sırasında loglara aşağıdaki mesajlardan biri yazılır:
+  - GDAL mevcutsa: `GDAL dönüştürücü başlatıldı: EPSG:4326 -> EPSG:2320`
+  - GDAL yoksa: `GDAL bulunamadı, Shapely+PyProj kullanılacak (daha yavaş)`
+- Docker imajı bağımlılık kurulumu için `uv pip install --system -r requirements.txt` kullanır ve derlenen GDAL (v3.8.0) ile Python binding’in eşleştiğini build aşamasında doğrular.
+
+### Kullanım (Programatik)
+- Dönüştürücü otomatik seçilir; `WFSGeometryProcessor` sınıfı iç mantıkta GDAL varsa `transform_geometry_gdal` kullanır, değilse PyProj ile dönüştürür.
+- Örnek:
+
+```python
+from src.geometry import WFSGeometryProcessor, GDAL_AVAILABLE
+
+# Kaynak ve hedef CRS tanımla
+processor = WFSGeometryProcessor(source_crs="EPSG:4326", target_crs="EPSG:2320")
+
+print("GDAL kullanılabilir mi?", GDAL_AVAILABLE)
+
+# WKT örneği (Polygon)
+wkt = "POLYGON((30.0 40.0, 30.1 40.0, 30.1 40.1, 30.0 40.1, 30.0 40.0))"
+
+# Dönüşüm (içeride GDAL varsa onu, yoksa PyProj’u kullanır)
+# Not: Normal akışta WKT dönüşümü process_geometry_element içinde otomatik gerçekleşir.
+try:
+    transformed_wkt = processor.transform_geometry_gdal(wkt) if GDAL_AVAILABLE else None
+except Exception:
+    transformed_wkt = None
+
+print("Transformed WKT:", transformed_wkt)
+```
+
+## Benchmark Örneği
+- GDAL ve PyProj arasında performans ve doğruluk karşılaştırması yapmak için `benchmark_transform` fonksiyonunu kullanabilirsiniz.
+
+```python
+from src.geometry import WFSGeometryProcessor
+
+processor = WFSGeometryProcessor(source_crs="EPSG:4326", target_crs="EPSG:2320")
+
+wkt = "POLYGON((30.0 40.0, 30.1 40.0, 30.1 40.1, 30.0 40.1, 30.0 40.0))"
+
+result = processor.benchmark_transform(wkt)
+print(result)
+# Örnek çıktı:
+# {
+#   'gdal_time_ms': 2.1,
+#   'pyproj_time_ms': 5.8,
+#   'mean_distance_m': 0.003,
+#   'method_used': 'gdal'
+# }
+```
+
+- `mean_distance_m` değeri dönüşümden sonra GDAL ve PyProj sonuçları arasındaki ortalama nokta mesafesini (metre cinsinden yaklaşık) raporlar; farklılık çok düşük olmalıdır.
+- Büyük veri setlerinde GDAL genellikle daha hızlıdır; loglar hangi yöntemin kullanıldığını bildirir.
 
 ## Oracle Senkronizasyonu
 - `scripts/sync.sh` Postgres’ten Oracle’a veri aktarımı yapar:

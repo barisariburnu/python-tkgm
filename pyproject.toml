@@ -18,6 +18,7 @@ dependencies = [
     "lxml>=6.0.2",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "GDAL==3.8.0",
 ]
 
 [project.optional-dependencies]

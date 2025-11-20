@@ -25,7 +25,7 @@ except ImportError:
 
 try:
     from shapely.geometry import Polygon, MultiPolygon, Point, LineString, MultiLineString
-    from shapely.wkt import dumps as wkt_dumps
+    from shapely.wkt import dumps as wkt_dumps, loads as wkt_loads
     SHAPELY_AVAILABLE = True
 except ImportError:
     SHAPELY_AVAILABLE = False
@@ -37,6 +37,15 @@ try:
 except ImportError:
     PYPROJ_AVAILABLE = False
     logger.error("PyProj gerekli ancak mevcut değil")
+
+# GDAL Python binding (osgeo)
+try:
+    from osgeo import ogr, osr
+    GDAL_AVAILABLE = True
+    logger.info("Koordinat dönüşüm yöntemi: GDAL Python bindings (osgeo)")
+except ImportError:
+    GDAL_AVAILABLE = False
+    logger.warning("GDAL bulunamadı, Shapely+PyProj kullanılacak (daha yavaş)")
 
 
 class WFSGeometryProcessor:
@@ -64,36 +73,154 @@ class WFSGeometryProcessor:
         
         # Bağımlılıkları kontrol et
         self._check_dependencies()
-        
-        # Koordinat dönüştürücüsünü başlat
-        self._initialize_transformer()
+
+        # Dönüştürücüyü seç ve başlat
+        if GDAL_AVAILABLE:
+            self._init_gdal_transformer()
+        else:
+            self._init_pyproj_transformer()
     
     def _check_dependencies(self) -> None:
         """Gerekli bağımlılıkların mevcut olup olmadığını kontrol eder."""
-        missing_deps = []        
-                
-        # Bağımlılıkları kontrol et
+        missing_deps = []
+
+        # Shapely WKT üretimi ve WKT'den halkalar için zorunlu
         if not SHAPELY_AVAILABLE:
             missing_deps.append("shapely")
-        if not PYPROJ_AVAILABLE:
+
+        # PyProj sadece GDAL yoksa zorunlu
+        if not PYPROJ_AVAILABLE and not GDAL_AVAILABLE:
             missing_deps.append("pyproj")
-            
+
         if missing_deps:
             raise ImportError(f"Eksik gerekli bağımlılıklar: {', '.join(missing_deps)}")
     
     
-    def _initialize_transformer(self) -> None:
-        """Koordinat dönüştürücüsünü başlatır."""
+    def _init_pyproj_transformer(self) -> None:
+        """PyProj koordinat dönüştürücüsünü başlatır."""
         try:
             self.transformer = Transformer.from_crs(
-                self.source_crs, 
-                self.target_crs, 
+                self.source_crs,
+                self.target_crs,
                 always_xy=True
             )
-            logger.info(f"Dönüştürücü başlatıldı: {self.source_crs} -> {self.target_crs}")
+            logger.info(f"PyProj dönüştürücü başlatıldı: {self.source_crs} -> {self.target_crs}")
         except Exception as e:
-            logger.error(f"Dönüştürücü başlatılamadı: {e}")
+            logger.error(f"PyProj dönüştürücü başlatılamadı: {e}")
             raise
+
+    def _init_gdal_transformer(self) -> None:
+        """GDAL koordinat dönüştürücüsünü başlatır."""
+        try:
+            def _epsg_code(crs_str: str) -> int:
+                if crs_str.upper().startswith("EPSG:"):
+                    return int(crs_str.split(":", 1)[1])
+                return int(crs_str)
+
+            source = osr.SpatialReference()
+            source.ImportFromEPSG(_epsg_code(self.source_crs))
+
+            target = osr.SpatialReference()
+            target.ImportFromEPSG(_epsg_code(self.target_crs))
+
+            self.gdal_transformer = osr.CoordinateTransformation(source, target)
+            logger.info(f"GDAL dönüştürücü başlatıldı: {self.source_crs} -> {self.target_crs}")
+        except Exception as e:
+            logger.error(f"GDAL dönüştürücü başlatılamadı: {e}")
+            # GDAL başarısız olursa PyProj'a düş
+            self._init_pyproj_transformer()
+
+    def transform_geometry_gdal(self, wkt: str) -> str:
+        """GDAL ile WKT geometriyi hedef CRS'ye dönüştürür."""
+        if not GDAL_AVAILABLE:
+            raise RuntimeError("GDAL mevcut değil")
+        try:
+            geom = ogr.CreateGeometryFromWkt(wkt)
+            geom.Transform(self.gdal_transformer)
+            return geom.ExportToWkt()
+        except Exception as e:
+            logger.error(f"GDAL ile geometri dönüştürme başarısız: {e}")
+            raise
+
+    def _rings_from_wkt(self, wkt: str, geom_type_hint: str) -> List[List[Tuple[float, float]]]:
+        """WKT'den koordinat halkalarını çıkarır."""
+        try:
+            geom = wkt_loads(wkt)
+            rings: List[List[Tuple[float, float]]] = []
+            gt = geom.geom_type
+
+            if gt == 'Point':
+                x, y = geom.x, geom.y
+                rings = [[(x, y)]]
+            elif gt == 'LineString':
+                rings = [[(float(x), float(y)) for x, y in geom.coords]]
+            elif gt == 'MultiLineString':
+                rings = [[(float(x), float(y)) for x, y in line.coords] for line in geom.geoms]
+            elif gt == 'Polygon':
+                rings = [[(float(x), float(y)) for x, y in geom.exterior.coords]]
+            elif gt == 'MultiPolygon':
+                rings = [[(float(x), float(y)) for x, y in poly.exterior.coords] for poly in geom.geoms]
+            elif gt == 'MultiPoint':
+                rings = [[(float(p.x), float(p.y))] for p in geom.geoms]
+            else:
+                # Yedek: dış halkayı almayı dene
+                if hasattr(geom, 'exterior') and geom.exterior is not None:
+                    rings = [[(float(x), float(y)) for x, y in geom.exterior.coords]]
+            return rings
+        except Exception as e:
+            logger.error(f"WKT'den halkalar çıkarılamadı: {e}")
+            return []
+
+    def benchmark_transform(self, geom_type: str, rings: List[List[Tuple[float, float]]], iterations: int = 100) -> Dict[str, Any]:
+        """Aynı geometriyi GDAL ve PyProj ile dönüştürerek performans ve doğruluk karşılaştırması yapar."""
+        import time
+
+        results: Dict[str, Any] = {
+            'iterations': iterations,
+            'gdal_available': GDAL_AVAILABLE,
+            'pyproj_available': PYPROJ_AVAILABLE,
+            'gdal_seconds': None,
+            'pyproj_seconds': None,
+            'same_geometry': None,
+        }
+
+        # Orijinal WKT
+        wkt_original = self.create_wkt_from_rings(geom_type, rings)
+
+        # GDAL süresi
+        if GDAL_AVAILABLE:
+            start = time.perf_counter()
+            wkt_gdal = None
+            for _ in range(iterations):
+                wkt_gdal = self.transform_geometry_gdal(wkt_original)
+            results['gdal_seconds'] = time.perf_counter() - start
+        else:
+            wkt_gdal = None
+
+        # PyProj süresi
+        start = time.perf_counter()
+        wkt_pyproj = None
+        for _ in range(iterations):
+            transformed_rings = []
+            for ring in rings:
+                transformed_ring = self.transform_coordinates(ring)
+                transformed_rings.append(transformed_ring)
+            wkt_pyproj = self.create_wkt_from_rings(geom_type, transformed_rings)
+        results['pyproj_seconds'] = time.perf_counter() - start
+
+        # Doğruluk karşılaştırması (WKT'ler aynı geometrileri temsil ediyor mu?)
+        if wkt_gdal and wkt_pyproj:
+            try:
+                g1 = wkt_loads(wkt_gdal)
+                g2 = wkt_loads(wkt_pyproj)
+                results['same_geometry'] = g1.equals_exact(g2, 1e-8)
+            except Exception:
+                results['same_geometry'] = False
+        else:
+            results['same_geometry'] = None
+
+        logger.info(f"Benchmark - GDAL: {results['gdal_seconds']} sn, PyProj: {results['pyproj_seconds']} sn, same: {results['same_geometry']}")
+        return results
     
     def parse_wfs_xml(self, xml_content: str) -> ET.Element:
         """WFS XML içeriğini ayrıştırır - lxml optimize edilmiş."""
@@ -133,16 +260,13 @@ class WFSGeometryProcessor:
             raise ValueError(f"Geçersiz koordinat dizesi formatı: {coord_string}")
     
     def transform_coordinates(self, coordinates: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
-        """Koordinatları kaynak CRS'den hedef CRS'ye dönüştürür."""
+        """Koordinatları kaynak CRS'den hedef CRS'ye dönüştürür (PyProj)."""
         try:
             transformed_coords = []
-            
             for lon, lat in coordinates:
                 x, y = self.transformer.transform(lon, lat)
                 transformed_coords.append((x, y))
-            
             return transformed_coords
-            
         except Exception as e:
             logger.error(f"Koordinat dönüştürme başarısız: {e}")
             raise Exception(f"Koordinat dönüştürme başarısız: {e}")
@@ -495,19 +619,33 @@ class WFSGeometryProcessor:
                         if coord_elem.text is not None and coord_elem.text.strip():
                             # Bu halkadan koordinatları çıkar
                             original_coords = self.extract_coordinates_from_string(coord_elem.text)
-                            transformed_coords = self.transform_coordinates(original_coords)
-                            
-                            # Poligonlar için halkanın kapalı olduğundan emin ol
-                            if geom_type in ['MultiPolygon', 'Polygon'] and len(transformed_coords) >= 3:
-                                if transformed_coords[0] != transformed_coords[-1]:
-                                    transformed_coords.append(transformed_coords[0])
+
+                            # Poligonlar için orijinal halkanın kapalı olduğundan emin ol
+                            if geom_type in ['MultiPolygon', 'Polygon'] and len(original_coords) >= 3:
+                                if original_coords[0] != original_coords[-1]:
                                     original_coords.append(original_coords[0])
+
+                            if not GDAL_AVAILABLE:
+                                transformed_coords = self.transform_coordinates(original_coords)
+                                # Poligonlar için dönüştürülmüş halkanın kapalı olduğundan emin ol
+                                if geom_type in ['MultiPolygon', 'Polygon'] and len(transformed_coords) >= 3:
+                                    if transformed_coords[0] != transformed_coords[-1]:
+                                        transformed_coords.append(transformed_coords[0])
+                                all_transformed_rings.append(transformed_coords)
                             
                             all_original_rings.append(original_coords)
-                            all_transformed_rings.append(transformed_coords)
                     
-                    # Geometri tipine ve halka sayısına göre uygun WKT oluştur
-                    wkt = self.create_wkt_from_rings(geom_type, all_transformed_rings)
+                    # GDAL varsa WKT bazlı dönüşüm yap; yoksa PyProj ile koordinatları dönüştür
+                    if GDAL_AVAILABLE:
+                        # Orijinal halkalardan WKT oluştur ve GDAL ile dönüştür
+                        wkt_original = self.create_wkt_from_rings(geom_type, all_original_rings)
+                        wkt = self.transform_geometry_gdal(wkt_original)
+                        all_transformed_rings = self._rings_from_wkt(wkt, geom_type)
+                        logger.debug("WKT dönüşümü GDAL ile yapıldı")
+                    else:
+                        # PyProj ile koordinatları dönüştür ve WKT üret
+                        wkt = self.create_wkt_from_rings(geom_type, all_transformed_rings)
+                        logger.debug("Koordinat dönüşümü PyProj ile yapıldı")
                                         
                     # Sonuç sözlüğü oluştur
                     result = {
