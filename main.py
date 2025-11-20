@@ -14,6 +14,7 @@ from datetime import datetime, date, timedelta
 
 # Modülleri import et
 from src.database import DatabaseManager
+from src.telegram import TelegramNotifier
 from src.client import TKGMClient
 from src.geometry import WFSGeometryProcessor
 
@@ -33,6 +34,9 @@ class TKGMScraper:
         
         # Bileşenleri başlat
         self._initialize_components()
+        
+        # Telegram bildirim modülü
+        self.notifier = TelegramNotifier()
         
         # Sinyal yakalayıcıları ayarla
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -324,21 +328,37 @@ class TKGMScraper:
         current_index = start_index
         current_date = start_date if start_date else (datetime.now() - timedelta(days=1))
         end_date = datetime.now()
+        
+        # Özet metrikleri
+        summary_found = 0
+        summary_saved = 0
+        summary_pages = 0
+        summary_empty_pages = 0
+        summary_errors = 0
+        run_start = current_date
                 
         # TKGMClient instance'ını döngü dışında bir kez oluştur
         client = TKGMClient(typename=os.getenv('PARSELLER', 'TKGM:parseller'), db_manager=db)
         
         while current_date < end_date and self.running:
             logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında işleniyor")
+            summary_pages += 1
             
             # CQL filtre oluştur
-            cql_filter = f"(onaydurum=1 and sistemguncellemetarihi>='{current_date.isoformat()}' and sistemguncellemetarihi<'{end_date.isoformat()}' and sistemkayittarihi<'{end_date.isoformat()}')"
+            cql_filter = f"(onaydurum=1 and durum=3 and sistemguncellemetarihi>='{current_date.isoformat()}' and sistemguncellemetarihi<'{end_date.isoformat()}' and sistemkayittarihi<'{end_date.isoformat()}')"
             
             logger.info(f"Parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
             content = client.fetch_features(start_index=current_index, cql_filter=cql_filter)
             
             if content is None:
                 logger.error(f"TKGM servisinden parsel verisi alınamadı")
+                summary_errors += 1
+                if self.notifier.is_configured():
+                    self.notifier.send_message(
+                        f"❗ Günlük senkronizasyon: TKGM yanıtı alınamadı\n"
+                        f"• Tarih: {current_date.strftime('%Y-%m-%d')}\n"
+                        f"• Sayfa: {current_index} - {current_index + max_features}"
+                    )
                 break
             
             processor = WFSGeometryProcessor()
@@ -350,6 +370,7 @@ class TKGMScraper:
                 
                 if len(feature_members) == 0:
                     logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında feature member bulunamadı, bir sonraki sayfaya geçiliyor")
+                    summary_empty_pages += 1
                     current_date = current_date + timedelta(days=1)
                     current_index = 0
                     continue
@@ -515,12 +536,14 @@ class TKGMScraper:
                 
                 features_count = len(all_features)
                 logger.info(f"[{current_date}] Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel özelliği çekildi")
+                summary_found += features_count
                 
                 # Veritabanına kaydet
                 if all_features:
                     try:
                         db.insert_parcels(all_features)
                         logger.info(f"[{current_date}] Index {current_index} - {current_index + max_features} arasında {len(all_features)} parsel veritabanına kaydedildi")
+                        summary_saved += len(all_features)
                         
                         # Sonraki sayfa için start_index'i artır
                         current_index += max_features
@@ -537,6 +560,14 @@ class TKGMScraper:
                     
                     except Exception as e:
                         logger.error(f"Veritabanına kaydetme hatası: {e}")
+                        summary_errors += 1
+                        if self.notifier.is_configured():
+                            self.notifier.send_message(
+                                f"❗ Günlük senkronizasyon: DB kayıt hatası\n"
+                                f"• Tarih: {current_date.strftime('%Y-%m-%d')}\n"
+                                f"• Index: {current_index} - {current_index + max_features}\n"
+                                f"• Hata: {str(e)[:300]}"
+                            )
                         break
                 else:
                     logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında kaydedilecek parsel verisi bulunamadı")
@@ -548,6 +579,14 @@ class TKGMScraper:
                 
             except Exception as e:
                 logger.error(f"Parsel verilerini işlerken hata: {e}")
+                summary_errors += 1
+                if self.notifier.is_configured():
+                    self.notifier.send_message(
+                        f"❗ Günlük senkronizasyon: İşleme hatası\n"
+                        f"• Tarih: {current_date.strftime('%Y-%m-%d')}\n"
+                        f"• Index: {current_index} - {current_index + max_features}\n"
+                        f"• Hata: {str(e)[:300]}"
+                    )
                 break
         
         # İşlem tamamlandığında final güncelleme
@@ -557,6 +596,24 @@ class TKGMScraper:
             logger.info(f"İşlem kullanıcı tarafından durduruldu")
         else:
             logger.info(f"Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel çekildi. Tüm veriler çekildi. Son işlenen tarih: {current_date.strftime('%Y-%m-%d')}")
+        
+        # Günlük özet bildirimi
+        if self.notifier.is_configured():
+            try:
+                run_end = datetime.now()
+                message = self.notifier.format_daily_summary(
+                    start_dt=run_start,
+                    end_dt=run_end,
+                    pages=summary_pages,
+                    found=summary_found,
+                    saved=summary_saved,
+                    empty_pages=summary_empty_pages,
+                    errors=summary_errors,
+                )
+                self.notifier.send_message(message)
+                logger.info("Günlük senkronizasyon özeti Telegram’a gönderildi")
+            except Exception as e:
+                logger.error(f"Günlük özet Telegram’a gönderilemedi: {e}")
 
 
     def sync_fully_parcels(self, start_index: Optional[int] = 0):
@@ -864,6 +921,7 @@ def main():
     parser.add_argument('--neighbourhoods', action='store_true', help='Mahalle verilerini senkronize et')
     parser.add_argument('--districts', action='store_true', help='İlçe verilerini senkronize et')
     parser.add_argument('--stats', action='store_true', help='İstatistik verilerini göster')
+    parser.add_argument('--stats-telegram', action='store_true', help='İstatistikleri Telegram’a gönder')
 
     try:
         args = parser.parse_args()
@@ -885,6 +943,17 @@ def main():
             scraper.sync_districts()
         elif args.stats:
             scraper.show_stats()
+        elif args.stats_telegram:
+            db = DatabaseManager()
+            stats = db.get_statistics()
+            if not stats:
+                logger.error("İstatistik verileri alınamadı; Telegram gönderimi atlandı")
+            else:
+                sent = scraper.notifier.send_stats(stats)
+                if sent:
+                    logger.info("İstatistikler Telegram’a gönderildi")
+                else:
+                    logger.error("İstatistikler Telegram’a gönderilemedi")
         else:
             parser.print_help()
 

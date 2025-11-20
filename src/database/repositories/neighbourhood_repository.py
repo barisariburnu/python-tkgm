@@ -6,7 +6,7 @@ Mahalle verilerinin database işlemleri.
 from typing import Any, Dict, List, Union
 from loguru import logger
 from .base_repository import BaseRepository
-from ..logging_utils import BatchLogger
+from ...logging_utils import BatchLogger
 
 # Optional: Import dataclass models
 try:

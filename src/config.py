@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # Logging Configuration
     LOG_LEVEL: str = Field(default="INFO", description="Log level")
     LOG_FILE: str = Field(default="logs/scraper.log", description="Log file path")
+
+    # Telegram Notification (Optional)
+    TELEGRAM_BOT_TOKEN: Optional[str] = Field(default=None, description="Telegram bot token")
+    TELEGRAM_CHAT_ID: Optional[str] = Field(default=None, description="Telegram chat/group/channel ID")
+    TELEGRAM_PARSE_MODE: Optional[str] = Field(default=None, description="Telegram parse mode (Markdown, HTML)")
     
     @field_validator("LOG_LEVEL")
     @classmethod

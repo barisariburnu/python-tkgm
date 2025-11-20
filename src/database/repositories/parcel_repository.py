@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Union
 from loguru import logger
 from .base_repository import BaseRepository
 from .failed_records_repository import FailedRecordsRepository
-from ..logging_utils import BatchLogger
+from ...logging_utils import BatchLogger
 
 # Optional: Import dataclass models (backward compatible if not used)
 try:

@@ -50,6 +50,7 @@ TKGM WFS servisinden parsel, mahalle ve ilçe verilerini otomatik olarak çeker,
   - `python main.py --neighbourhoods` mahalle senkronizasyonu
   - `python main.py --districts` ilçe senkronizasyonu
   - `python main.py --stats` istatistikleri gösterir
+  - `python main.py --stats-telegram` istatistikleri Telegram’a gönderir
 - Loglama:
   - `LOG_FILE` ve `LOG_LEVEL` `.env` ile ayarlanır; varsayılan `logs/scraper.log`.
 - Performans Ayarları:
@@ -71,6 +72,20 @@ TKGM WFS servisinden parsel, mahalle ve ilçe verilerini otomatik olarak çeker,
   - `0 2 * * *` günlük parsel senkronizasyonu (`/app/main.py --daily`)
   - `0 3 * * *` Oracle senkronizasyonu (`/app/scripts/sync.sh`)
 - Not: `Dockerfile` cron dosyasını `/etc/cron.d/tkgm` olarak yazar.
+
+## Telegram Entegrasyonu
+- Ortam değişkenlerini `.env` içinde tanımlayın:
+  - `TELEGRAM_BOT_TOKEN` (BotFather ile oluşturulan bot token’ı)
+  - `TELEGRAM_CHAT_ID` (grup/kanal/chat kimliği; negatif değerli olabilir)
+  - `TELEGRAM_PARSE_MODE` (opsiyonel: `Markdown`, `MarkdownV2`, `HTML`)
+- İstatistik gönderimi:
+  - `python main.py --stats-telegram`
+ - Günlük senkronizasyon özeti ve hata bildirimleri:
+   - `python main.py --daily` çalışırken Telegram yapılandırması varsa, akış sonunda günlük özet otomatik gönderilir.
+   - TKGM yanıt alınamazsa, veritabanı kayıt hatası olursa veya işleme sırasında hata oluşursa anında uyarı mesajı gönderilir.
+- Notlar:
+  - Chat ID’yi `@userinfobot` ile veya Telegram API üzerinden edinebilirsiniz.
+  - Gönderim sonucu loglara yazılır.
 
 ## Lisans
 - MIT Lisansı altında dağıtılır. Detaylar için `LICENSE` dosyasına bakınız.
