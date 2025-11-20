@@ -10,7 +10,7 @@ Bağımlılıklar:
 """
 
 from loguru import logger
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 
 # Use lxml for faster XML parsing (2-5x faster than xml.etree)
 try:
@@ -44,7 +44,7 @@ class WFSGeometryProcessor:
     WFS FeatureCollection yanıtlarını işlemek ve geometrileri dönüştürmek için bir sınıf.
     """
     
-    def __init__(self, source_crs: str = "EPSG:4326", target_crs: str = "EPSG:2320"):
+    def __init__(self, source_crs: str = "EPSG:4326", target_crs: str = "EPSG:2320") -> None:
         """
         İşlemciyi kaynak ve hedef koordinat sistemleri ile başlatır.
         """
@@ -467,7 +467,7 @@ class WFSGeometryProcessor:
             logger.error(f"WFS yanıtı işlenirken hata oluştu: {e}")
             raise    
 
-    def process_geometry_element(self, elem):
+    def process_geometry_element(self, elem) -> Dict[str, Any]:
         """Tek bir geometri öğesini işler ve detaylarını döndürür"""
         # Geometri öğelerini bul ve işle (MultiPolygon'u Polygon'dan önceliklendir)
         geometry_found = False
