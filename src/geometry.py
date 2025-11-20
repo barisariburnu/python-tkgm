@@ -11,7 +11,17 @@ Bağımlılıklar:
 
 from loguru import logger
 from typing import List, Dict, Tuple
-from xml.etree import ElementTree as ET
+
+# Use lxml for faster XML parsing (2-5x faster than xml.etree)
+try:
+    from lxml import etree as ET
+    LXML_AVAILABLE = True
+    logger.debug("lxml kullanılıyor (optimize edilmiş XML parsing)")
+except ImportError:
+    # Fallback to standard library
+    from xml.etree import ElementTree as ET
+    LXML_AVAILABLE = False
+    logger.warning("lxml bulunamadı, xml.etree kullanılıyor (daha yavaş)")
 
 try:
     from shapely.geometry import Polygon, MultiPolygon, Point, LineString, MultiLineString
@@ -86,13 +96,14 @@ class WFSGeometryProcessor:
             raise
     
     def parse_wfs_xml(self, xml_content: str) -> ET.Element:
-        """WFS XML içeriğini ayrıştırır."""
+        """WFS XML içeriğini ayrıştırır - lxml optimize edilmiş."""
         try:
-            # XML içeriğinin UTF-8 olarak kodlandığından emin ol
-            if isinstance(xml_content, bytes):
-                xml_content = xml_content.decode('utf-8')
+            # lxml bytes'ı doğrudan işleyebilir (xml.etree'den daha hızlı)
+            if isinstance(xml_content, str):
+                xml_content = xml_content.encode('utf-8')
             
-            root = ET.fromstring(xml_content.encode('utf-8'))
+            # lxml.etree.fromstring doğrudan bytes alır
+            root = ET.fromstring(xml_content)
             feature_members = root.findall('.//{http://www.opengis.net/gml}featureMember')
             
             logger.info(f"WFS XML başarıyla ayrıştırıldı: {len(feature_members)} feature member bulundu")
