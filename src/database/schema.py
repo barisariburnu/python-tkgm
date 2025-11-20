@@ -23,6 +23,7 @@ class SchemaManager:
                     self._create_district_table(cursor)
                     self._create_neighbourhood_table(cursor)
                     self._create_settings_table(cursor)
+                    self._create_failed_records_table(cursor)
                     
                     conn.commit()
                     logger.info("Veritabanı tabloları başarıyla oluşturuldu")
@@ -168,3 +169,38 @@ class SchemaManager:
         """)
         
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_settings_query_date ON tk_settings (query_date);")
+    
+    def _create_failed_records_table(self, cursor):
+        """
+        Başarısız kayıtlar tablosu - VERİ KAYBI ÖNLENDİ!
+        
+        UNIQUE constraint ile duplicate prevention:
+        - Aynı entity_id + status kombinasyonu 2 kere eklenemez
+        - Rollback sonrası tekrar insert denemesi duplicate oluşturmaz
+        """
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tk_failed_records (
+                id SERIAL PRIMARY KEY,
+                entity_type VARCHAR(50) NOT NULL,
+                entity_id VARCHAR(255),
+                raw_data JSONB NOT NULL,
+                error_type VARCHAR(100),
+                error_message TEXT,
+                stack_trace TEXT,
+                retry_count INTEGER DEFAULT 0,
+                last_retry_at TIMESTAMP,
+                status VARCHAR(50) DEFAULT 'failed',
+                resolved_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                -- DUPLICATE ÖNLENDİ!
+                UNIQUE(entity_type, entity_id, status)
+            );
+        """)
+        
+        # İndeksler - hızlı sorgulama için
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_failed_records_entity_type ON tk_failed_records (entity_type);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_failed_records_status ON tk_failed_records (status);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_failed_records_created_at ON tk_failed_records (created_at);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_failed_records_retry_count ON tk_failed_records (retry_count);")
+

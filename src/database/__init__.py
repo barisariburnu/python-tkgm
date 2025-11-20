@@ -12,7 +12,8 @@ from .repositories import (
     DistrictRepository,
     NeighbourhoodRepository,
     SettingsRepository,
-    LogRepository
+    LogRepository,
+    FailedRecordsRepository
 )
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     'NeighbourhoodRepository',
     'SettingsRepository',
     'LogRepository',
+    'FailedRecordsRepository',
     'DatabaseManager',  # Backward compatibility
 ]
 
@@ -47,6 +49,7 @@ class DatabaseManager:
         self.neighbourhood_repo = NeighbourhoodRepository(self.connection)
         self.settings_repo = SettingsRepository(self.connection)
         self.log_repo = LogRepository(self.connection)
+        self.failed_records_repo = FailedRecordsRepository(self.connection)  # NEW!
     
     # Connection methods
     def get_connection(self):

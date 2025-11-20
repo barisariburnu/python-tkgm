@@ -10,6 +10,7 @@ from .district_repository import DistrictRepository
 from .neighbourhood_repository import NeighbourhoodRepository
 from .settings_repository import SettingsRepository
 from .log_repository import LogRepository
+from .failed_records_repository import FailedRecordsRepository
 
 __all__ = [
     'BaseRepository',
@@ -18,4 +19,5 @@ __all__ = [
     'NeighbourhoodRepository',
     'SettingsRepository',
     'LogRepository',
+    'FailedRecordsRepository',  # NEW!
 ]
