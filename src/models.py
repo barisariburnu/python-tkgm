@@ -160,8 +160,7 @@ class NeighbourhoodFeature:
     @classmethod
     def from_dict(cls, data: dict) -> 'NeighbourhoodFeature':
         """Create NeighbourhoodFeature from dictionary"""
-        valid_fields = {k: v for k, v in data.items() 
-                       if k in cls.__dataclass_fields__}
+        valid_fields = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         return cls(**valid_fields)
     
     def to_dict(self) -> dict:
