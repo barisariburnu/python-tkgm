@@ -41,6 +41,7 @@ class TKGMClient:
         self.timeout = 300  # 5 dakika
         self.running = True
         self.retry_delay = 5  # saniye
+        self.max_retries = 10  # maksimum deneme sayısı
         
         logger.info("TKGM İstemci başlatıldı")
     
@@ -121,11 +122,11 @@ class TKGMClient:
         start_time = time.time()
         attempt = 0
 
-        while self.running:
+        while self.running and attempt < self.max_retries:
             attempt += 1
 
             try:
-                logger.info(f"TKGM servisine istek gönderiliyor (Deneme: {attempt})")
+                logger.info(f"TKGM servisine istek gönderiliyor (Deneme: {attempt}/{self.max_retries})")
         
                 response = self.session.get(url, timeout=self.timeout)
                 metadata['http_status_code'] = response.status_code
@@ -177,11 +178,12 @@ class TKGMClient:
                 return content
             
             except requests.exceptions.Timeout:
-                error_msg = f"İstek zaman aşımına uğradı (Deneme: {attempt})"
+                error_msg = f"İstek zaman aşımına uğradı (Deneme: {attempt}/{self.max_retries})"
                 logger.warning(error_msg)
                 metadata['error_message'] = error_msg
                 
-                time.sleep(self.retry_delay)
+                if attempt < self.max_retries:
+                    time.sleep(self.retry_delay)
                     
             except requests.exceptions.HTTPError as e:
                 error_msg = f"HTTP hatası: {e.response.status_code} - {e.response.reason}"
@@ -193,14 +195,16 @@ class TKGMClient:
                 if 400 <= e.response.status_code < 500:
                     break
                     
-                time.sleep(self.retry_delay)
+                if attempt < self.max_retries:
+                    time.sleep(self.retry_delay)
                     
             except requests.exceptions.ConnectionError:
-                error_msg = f"Bağlantı hatası (Deneme: {attempt})"
+                error_msg = f"Bağlantı hatası (Deneme: {attempt}/{self.max_retries})"
                 logger.warning(error_msg)
                 metadata['error_message'] = error_msg
                 
-                time.sleep(self.retry_delay)
+                if attempt < self.max_retries:
+                    time.sleep(self.retry_delay)
                     
             except Exception as e:
                 error_msg = f"Beklenmeyen hata: {str(e)}"
@@ -209,6 +213,12 @@ class TKGMClient:
                 break
         
         metadata['execution_time'] = time.time() - start_time
-        logger.error(f"TKGM servis isteği başarısız: {metadata['error_message']}")
+        
+        # Maksimum deneme sayısına ulaşıldı mı kontrol et
+        if attempt >= self.max_retries:
+            metadata['error_message'] = f"Maksimum deneme sayısına ({self.max_retries}) ulaşıldı"
+            logger.error(f"TKGM servis isteği başarısız: {metadata['error_message']}")
+        else:
+            logger.error(f"TKGM servis isteği başarısız: {metadata['error_message']}")
         
         return None
