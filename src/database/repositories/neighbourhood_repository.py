@@ -6,6 +6,7 @@ Mahalle verilerinin database işlemleri.
 from typing import Any, Dict, List
 from loguru import logger
 from .base_repository import BaseRepository
+from ..logging_utils import BatchLogger
 
 
 class NeighbourhoodRepository(BaseRepository):
@@ -20,6 +21,8 @@ class NeighbourhoodRepository(BaseRepository):
         saved_count = 0
         skipped_count = 0
         error_count = 0
+        
+        batch_logger = BatchLogger("Inserting neighbourhoods", total=len(features), interval=50)
         
         conn = None
         cursor = None
@@ -76,9 +79,7 @@ class NeighbourhoodRepository(BaseRepository):
                             geom
                         ))
                         saved_count += 1
-                        
-                        if saved_count % 50 == 0:
-                            logger.info(f"Progress: {saved_count}/{len(features)} neighbourhoods processed")
+                        batch_logger.log_progress(saved_count)
                         
                     except Exception as e:
                         logger.error(f"Mahalle kaydedilirken hata: {e}")
@@ -93,14 +94,12 @@ class NeighbourhoodRepository(BaseRepository):
             
             if conn:
                 conn.commit()
-                logger.info(f"✅ {saved_count} mahalle başarıyla commit edildi")
             
-            if skipped_count > 0:
-                logger.warning(f"{skipped_count} mahalle atlandı (eksik veri)")
-            if error_count > 0:
-                logger.warning(f"{error_count} mahalle hata nedeniyle kaydedilemedi")
-            
-            logger.info(f"Toplam işlenen: {len(features)}, Kaydedilen: {saved_count}, Atlanan: {skipped_count}, Hatalı: {error_count}")
+            batch_logger.finalize(
+                success_count=saved_count,
+                error_count=error_count,
+                skip_count=skipped_count
+            )
 
         except Exception as e:
             logger.error(f"Toplu insert sırasında kritik hata: {e}")

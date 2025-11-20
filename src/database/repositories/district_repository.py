@@ -6,6 +6,7 @@
 from typing import Any, Dict, List
 from loguru import logger
 from .base_repository import BaseRepository
+from ..logging_utils import BatchLogger
 
 
 class DistrictRepository(BaseRepository):
@@ -20,6 +21,8 @@ class DistrictRepository(BaseRepository):
         saved_count = 0
         skipped_count = 0
         error_count = 0
+        
+        batch_logger = BatchLogger("Inserting districts", total=len(features), interval=50)
         
         conn = None
         cursor = None
@@ -66,9 +69,7 @@ class DistrictRepository(BaseRepository):
                             geom
                         ))
                         saved_count += 1
-                        
-                        if saved_count % 50 == 0:
-                            logger.info(f"Progress: {saved_count}/{len(features)} districts processed")
+                        batch_logger.log_progress(saved_count)
                         
                     except Exception as e:
                         logger.error(f"İlçe kaydedilirken hata: {e}")
@@ -83,14 +84,12 @@ class DistrictRepository(BaseRepository):
             
             if conn:
                 conn.commit()
-                logger.info(f"✅ {saved_count} ilçe başarıyla commit edildi")
             
-            if skipped_count > 0:
-                logger.warning(f"{skipped_count} ilçe atlandı (eksik veri)")
-            if error_count > 0:
-                logger.warning(f"{error_count} ilçe hata nedeniyle kaydedilemedi")
-            
-            logger.info(f"Toplam işlenen: {len(features)}, Kaydedilen: {saved_count}, Atlanan: {skipped_count}, Hatalı: {error_count}")
+            batch_logger.finalize(
+                success_count=saved_count,
+                error_count=error_count,
+                skip_count=skipped_count
+            )
 
         except Exception as e:
             logger.error(f"Toplu insert sırasında kritik hata: {e}")
