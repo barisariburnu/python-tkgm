@@ -114,17 +114,6 @@ wheels = [
 ]
 
 [[package]]
-name = "cx-oracle"
-version = "8.3.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e8/16/13c265afc984796fe38ee928733569b599cfd657245ddd1afad238b66656/cx_Oracle-8.3.0.tar.gz", hash = "sha256:3b2d215af4441463c97ea469b9cc307460739f89fdfa8ea222ea3518f1a424d9", size = 363886, upload-time = "2021-11-04T22:08:34.141Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/b7/c2d0223fb4f1013b090cf82f3ce56f36f33b79a48f9c33b36717c2977b04/cx_Oracle-8.3.0-cp310-cp310-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:b6a23da225f03f50a81980c61dbd6a358c3575f212ca7f4c22bb65a9faf94f7f", size = 892553, upload-time = "2021-11-04T22:08:43.072Z" },
-    { url = "https://files.pythonhosted.org/packages/68/5b/8294aa9db4b54a3be10bec66c812d2527ca02a3290b1475c0e5faa1e70bc/cx_Oracle-8.3.0-cp310-cp310-win32.whl", hash = "sha256:715a8bbda5982af484ded14d184304cc552c1096c82471dd2948298470e88a04", size = 147835, upload-time = "2021-11-04T22:08:44.125Z" },
-    { url = "https://files.pythonhosted.org/packages/67/a3/b671dee7f34971acf553df0c28818da6bf53b1a64901303f904c12ff443a/cx_Oracle-8.3.0-cp310-cp310-win_amd64.whl", hash = "sha256:07f01608dfb6603a8f2a868fc7c7bdc951480f187df8dbc50f4d48c884874e6a", size = 213059, upload-time = "2021-11-04T22:08:46.164Z" },
-]
-
-[[package]]
 name = "idna"
 version = "3.11"
 source = { registry = "https://pypi.org/simple" }
@@ -563,13 +552,9 @@ dev = [
     { name = "mypy" },
     { name = "types-requests" },
 ]
-oracle = [
-    { name = "cx-oracle" },
-]
 
 [package.metadata]
 requires-dist = [
-    { name = "cx-oracle", marker = "extra == 'oracle'", specifier = ">=8.3.0" },
     { name = "loguru", specifier = ">=0.7.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
@@ -579,7 +564,7 @@ requires-dist = [
     { name = "shapely", specifier = ">=2.0.2" },
     { name = "types-requests", marker = "extra == 'dev'", specifier = ">=2.31.0" },
 ]
-provides-extras = ["oracle", "dev"]
+provides-extras = ["dev"]
 
 [[package]]
 name = "requests"

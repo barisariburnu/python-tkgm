@@ -18,9 +18,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-oracle = [
-    "cx-Oracle>=8.3.0",
-]
 dev = [
     "mypy>=1.0.0",
     "types-requests>=2.31.0",
