@@ -3,16 +3,24 @@
 İlçe verilerinin database işlemleri.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 from loguru import logger
 from .base_repository import BaseRepository
 from ..logging_utils import BatchLogger
+
+# Optional: Import dataclass models
+try:
+    from ...models import DistrictFeature
+    MODELS_AVAILABLE = True
+except ImportError:
+    MODELS_AVAILABLE = False
+    DistrictFeature = None
 
 
 class DistrictRepository(BaseRepository):
     """İlçe repository - OPTIMIZED with single transaction"""
     
-    def insert_districts(self, features: List[Dict[str, Any]]) -> int:
+    def insert_districts(self, features: List[Union[Dict[str, Any], 'DistrictFeature']]) -> int:
         """İlçe verilerini veritabanına kaydet - OPTIMIZED"""
         if not features:
             logger.warning("Kayıt yapılacak ilçe verisi bulunamadı")
@@ -30,7 +38,13 @@ class DistrictRepository(BaseRepository):
             conn = self.db.get_connection()
             cursor = conn.cursor()
             
-            for feature in features:
+            for feature_input in features:
+                # TYPE-SAFE: Support both dict and DistrictFeature
+                if MODELS_AVAILABLE and isinstance(feature_input, DistrictFeature):
+                    feature = feature_input.to_dict()
+                else:
+                    feature = feature_input
+                
                 geom = None
 
                 try:

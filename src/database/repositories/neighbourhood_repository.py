@@ -3,17 +3,25 @@
 Mahalle verilerinin database işlemleri.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 from loguru import logger
 from .base_repository import BaseRepository
 from ..logging_utils import BatchLogger
+
+# Optional: Import dataclass models
+try:
+    from ...models import NeighbourhoodFeature
+    MODELS_AVAILABLE = True
+except ImportError:
+    MODELS_AVAILABLE = False
+    NeighbourhoodFeature = None
 
 
 class NeighbourhoodRepository(BaseRepository):
     """Mahalle repository - OPTIMIZED with single transaction"""
     
-    def insert_neighbourhoods(self, features: List[Dict[str, Any]]) -> int:
-        """Mahalle verilerini veritabanına kaydet - OPTIMIZED"""
+    def insert_neighbourhoods(self, features: List[Union[Dict[str, Any], 'NeighbourhoodFeature']]) -> int:
+        """Mahalle verilerini veritaban ına kaydet - OPTIMIZED"""
         if not features:
             logger.warning("Kayıt yapılacak mahalle verisi bulunamadı")
             return 0
@@ -30,7 +38,13 @@ class NeighbourhoodRepository(BaseRepository):
             conn = self.db.get_connection()
             cursor = conn.cursor()
             
-            for feature in features:
+            for feature_input in features:
+                # TYPE-SAFE: Support both dict and NeighbourhoodFeature
+                if MODELS_AVAILABLE and isinstance(feature_input, NeighbourhoodFeature):
+                    feature = feature_input.to_dict()
+                else:
+                    feature = feature_input
+                
                 geom = None
 
                 try:

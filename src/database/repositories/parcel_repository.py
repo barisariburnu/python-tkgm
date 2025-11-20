@@ -6,13 +6,22 @@ Features:
 - Duplicate prevention (UNIQUE entity_id)
 - Smart error handling (no nested duplicate saves)
 - Optimized logging (99% spam reduction)
+- Type-safe with dataclass support
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 from loguru import logger
 from .base_repository import BaseRepository
 from .failed_records_repository import FailedRecordsRepository
 from ..logging_utils import BatchLogger
+
+# Optional: Import dataclass models (backward compatible if not used)
+try:
+    from ...models import ParcelFeature
+    MODELS_AVAILABLE = True
+except ImportError:
+    MODELS_AVAILABLE = False
+    ParcelFeature = None
 
 
 class ParcelRepository(BaseRepository):
@@ -23,9 +32,11 @@ class ParcelRepository(BaseRepository):
         # Failed records tracking - veri kaybını önle!
         self.failed_repo = FailedRecordsRepository(db_connection)
     
-    def insert_parcels(self, features: List[Dict[str, Any]]) -> int:
+    def insert_parcels(self, features: List[Union[Dict[str, Any], 'ParcelFeature']]) -> int:
         """
         Parsel verilerini veritabanına kaydet
+        
+        Accepts both dict and ParcelFeature dataclass for type safety.
         
         Strategy:
         1. Single transaction for speed
@@ -51,7 +62,13 @@ class ParcelRepository(BaseRepository):
             conn = self.db.get_connection()
             cursor = conn.cursor()
             
-            for feature in features:
+            for feature_input in features:
+                # ✅ TYPE-SAFE: Support both dict and ParcelFeature
+                if MODELS_AVAILABLE and isinstance(feature_input, ParcelFeature):
+                    feature = feature_input.to_dict()
+                else:
+                    feature = feature_input
+                
                 geom = None
                 failed_saved = False  # 🔥 DUPLICATE ÖNLENDİ! Flag ekledik
 

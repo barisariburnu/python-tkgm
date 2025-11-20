@@ -87,8 +87,7 @@ class ParcelFeature:
             ParcelFeature instance
         """
         # Filter only valid fields
-        valid_fields = {k: v for k, v in data.items() 
-                       if k in cls.__dataclass_fields__}
+        valid_fields = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         return cls(**valid_fields)
     
     def to_dict(self) -> dict:
