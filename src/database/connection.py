@@ -3,25 +3,22 @@
 Bu modül veritabanı bağlantı yönetiminden sorumludur.
 """
 
-import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from loguru import logger
-from dotenv import load_dotenv
+from ..config import settings
 
 
 class DatabaseConnection:
     """PostgreSQL bağlantı yöneticisi"""
     
     def __init__(self):
-        # .env dosyasını yükle
-        load_dotenv()
-        
-        self.host = os.getenv('POSTGRES_HOST')
-        self.database = os.getenv('POSTGRES_DB')
-        self.port = int(os.getenv('POSTGRES_PORT', 5432))
-        self.user = os.getenv('POSTGRES_USER')
-        self.password = os.getenv('POSTGRES_PASS')
+        # Pydantic Settings kullan (type-safe, validated)
+        self.host = settings.POSTGRES_HOST
+        self.database = settings.POSTGRES_DB
+        self.port = settings.POSTGRES_PORT
+        self.user = settings.POSTGRES_USER
+        self.password = settings.POSTGRES_PASS
         
         self.connection_string = f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
     
