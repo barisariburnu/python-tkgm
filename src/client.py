@@ -19,7 +19,12 @@ load_dotenv()
 class TKGMClient:
     """TKGM WFS servis istemci sınıfı"""
     
-    def __init__(self, typename=None, max_features=None, db_manager=None):
+    def __init__(
+        self, 
+        typename: Optional[str] = None, 
+        max_features: Optional[int] = None, 
+        db_manager: Optional[object] = None  # DatabaseManager type
+    ) -> None:
         self.base_url = os.getenv('TKGM_BASE_URL')
         self.username = os.getenv('TKGM_USERNAME')
         self.password = os.getenv('TKGM_PASSWORD')
@@ -38,10 +43,10 @@ class TKGMClient:
         })
         
         # Timeout ve retry ayarları
-        self.timeout = 300  # 5 dakika
-        self.running = True
-        self.retry_delay = 5  # saniye
-        self.max_retries = 10  # maksimum deneme sayısı
+        self.timeout: int = 300  # 5 dakika
+        self.running: bool = True
+        self.retry_delay: int = 5  # saniye
+        self.max_retries: int = 10  # maksimum deneme sayısı
         
         logger.info("TKGM İstemci başlatıldı")
     
