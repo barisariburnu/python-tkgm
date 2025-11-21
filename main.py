@@ -345,7 +345,7 @@ class TKGMScraper:
             summary_pages += 1
             
             # CQL filtre oluştur
-            cql_filter = f"(onaydurum=1 and durum=3 and sistemguncellemetarihi>='{current_date.isoformat()}' and sistemguncellemetarihi<'{end_date.isoformat()}' and sistemkayittarihi<'{end_date.isoformat()}')"
+            cql_filter = f"(onaydurum=1 and sistemguncellemetarihi>='{current_date.isoformat()}' and sistemguncellemetarihi<'{end_date.isoformat()}' and sistemkayittarihi<'{end_date.isoformat()}')"
             
             logger.info(f"Parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
             content = client.fetch_features(start_index=current_index, cql_filter=cql_filter)
@@ -631,7 +631,7 @@ class TKGMScraper:
         while self.running:
             logger.info(f"Index {current_index} - {current_index + max_features} arasında işleniyor")
             
-            cql_filter = f"(onaydurum=1 and durum=3 and sistemguncellemetarihi<'2025-10-09' and sistemkayittarihi<'2025-10-09')"
+            cql_filter = f"(onaydurum=1 and sistemguncellemetarihi<'2025-10-09' and sistemkayittarihi<'2025-10-09')"
             
             logger.info(f"Parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
             content = client.fetch_features(start_index=current_index, cql_filter=cql_filter)
