@@ -89,9 +89,9 @@ class TelegramNotifier:
         cs_last_updated = current_settings.get("last_updated")
 
         lines = [
-            "📣 TKGM Veritabanı İstatistikleri",
+            "📣 TKGM Veritabanı İstatistikleri\n",
             "",
-            "📊 Parsel İstatistikleri",
+            "📊 Parsel İstatistikleri\n",
             f"• Toplam Parsel: {total_parcels:,}",
             f"• Bugün Eklenen: {parcels_today:,}",
             f"• Son 7 Gün: {parcels_last_week:,}",
@@ -103,11 +103,11 @@ class TelegramNotifier:
 
         lines += [
             "",
-            "🏘️ Diğer Veriler",
+            "🏘️ Diğer Veriler\n",
             f"• İlçe Sayısı: {total_districts:,}",
             f"• Mahalle Sayısı: {total_neighbourhoods:,}",
-            "",
-            "🔍 Sorgu İstatistikleri",
+            "\n",
+            "🔍 Sorgu İstatistikleri\n",
             f"• Toplam Sorgu: {total_queries:,}",
             f"• Bugün Sorgu: {queries_today:,}",
             f"• Ortalama Sonuç/Sorgu: {avg_features:.1f}",
@@ -123,7 +123,7 @@ class TelegramNotifier:
         if cs_query_date or cs_last_updated or cs_start_index:
             lines += [
                 "",
-                "📋 Mevcut Ayarlar",
+                "📋 Mevcut Ayarlar\n",
                 f"• Sorgu Tarihi: {cs_query_date}" if cs_query_date else "",
                 f"• Başlangıç İndeksi: {cs_start_index}",
                 f"• Ayar Güncelleme: {cs_last_updated}" if cs_last_updated else "",
@@ -148,14 +148,34 @@ class TelegramNotifier:
         empty_pages: int,
         errors: int,
     ) -> str:
-        """Günlük senkronizasyon özeti mesajını üretir"""
+        """Senkronizasyon özeti mesajını üretir"""
         lines = [
-            "📬 Günlük Senkronizasyon Özeti",
+            "📬 Senkronizasyon Özeti\n",
             f"• Aralık: {start_dt.strftime('%Y-%m-%d %H:%M')} → {end_dt.strftime('%Y-%m-%d %H:%M')}",
             f"• Sayfa: {pages}",
             f"• Bulunan Parsel: {found:,}",
             f"• Kaydedilen Parsel: {saved:,}",
             f"• Boş Sayfa: {empty_pages}",
             f"• Hata: {errors}",
+        ]
+        return "\n".join(lines)
+
+    def format_pull_report(
+        self,
+        date: datetime,
+        start_index: int,
+        end_index: int,
+        found: int,
+        saved: int,
+        unsaved: int,
+    ) -> str:
+        """Tek servis çekimi sonrası kayıt raporu mesajını üretir"""
+        lines = [
+            "📦 Servis Çekim Raporu\n",
+            f"• Tarih: {date.strftime('%Y-%m-%d')}",
+            f"• Sayfa: {start_index} - {end_index}",
+            f"• Bulunan Parsel: {found:,}",
+            f"• Kaydedilen Parsel: {saved:,}",
+            f"• Kaydedilemeyen Parsel: {unsaved:,}",
         ]
         return "\n".join(lines)

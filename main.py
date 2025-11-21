@@ -110,8 +110,24 @@ class TKGMScraper:
 
     def _signal_handler(self, signum, frame):
         """Sinyal yakalayıcısı (Ctrl+C, SIGTERM)"""
+        # Birden fazla sinyalde tekrarlı logları önle
+        if not getattr(self, 'running', True):
+            return
         logger.info(f"Sinyal alındı: {signum}, uygulama kapatılıyor...")
         self.running = False
+        # İstemciyi mümkünse durdur ve oturumu kapat
+        try:
+            if hasattr(self, 'client') and self.client:
+                self.client.running = False
+                try:
+                    self.client.timeout = 1  # sonraki denemelerde hızlı zaman aşımı
+                    self.client.session.close()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # Ana akışı derhal sonlandır
+        raise KeyboardInterrupt
 
 
     def sync_districts(self):
@@ -337,8 +353,13 @@ class TKGMScraper:
         summary_errors = 0
         run_start = current_date
                 
-        # TKGMClient instance'ını döngü dışında bir kez oluştur
-        client = TKGMClient(typename=os.getenv('PARSELLER', 'TKGM:parseller'), db_manager=db)
+        # TKGMClient: sınıf örneğini kullan, sinyal ile durdurulabilir olsun
+        client = getattr(self, 'client', None)
+        if client is None:
+            client = TKGMClient(db_manager=db)
+            self.client = client
+        client.typename = os.getenv('PARSELLER', 'TKGM:parseller')
+        client.max_features = max_features
         
         while current_date < end_date and self.running:
             logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında işleniyor")
@@ -353,15 +374,11 @@ class TKGMScraper:
             if content is None:
                 logger.error(f"TKGM servisinden parsel verisi alınamadı")
                 summary_errors += 1
-                if self.notifier.is_configured():
-                    self.notifier.send_message(
-                        f"❗ Günlük senkronizasyon: TKGM yanıtı alınamadı\n"
-                        f"• Tarih: {current_date.strftime('%Y-%m-%d')}\n"
-                        f"• Sayfa: {current_index} - {current_index + max_features}"
-                    )
                 break
             
             processor = WFSGeometryProcessor()
+            if not self.running:
+                break
             
             try:
                 # XML'i parse et
@@ -380,6 +397,8 @@ class TKGMScraper:
                 
                 # Process each feature member
                 for i, feature_member in enumerate(feature_members):
+                    if not self.running:
+                        break
                     try:
                         # Find parsel elements
                         elements = []
@@ -389,6 +408,8 @@ class TKGMScraper:
                         
                         # Her feature_member için parsel işle
                         for elem in elements:
+                            if not self.running:
+                                break
                             try:
                                 # Extract FID from parsel element
                                 fid_full = elem.get('fid', '')
@@ -538,36 +559,53 @@ class TKGMScraper:
                 logger.info(f"[{current_date}] Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel özelliği çekildi")
                 summary_found += features_count
                 
-                # Veritabanına kaydet
+                # Veritabanına kaydet ve raporla
                 if all_features:
                     try:
-                        db.insert_parcels(all_features)
-                        logger.info(f"[{current_date}] Index {current_index} - {current_index + max_features} arasında {len(all_features)} parsel veritabanına kaydedildi")
-                        summary_saved += len(all_features)
-                        
+                        saved_count = db.insert_parcels(all_features)
+                        unsaved_count = max(0, features_count - saved_count)
+                        logger.info(
+                            f"[{current_date}] Index {current_index} - {current_index + max_features} arasında "
+                            f"{saved_count} parsel veritabanına kaydedildi, {unsaved_count} kaydedilemedi"
+                        )
+                        summary_saved += saved_count
+
+                        # Başarılı çekim sonrası raporu Telegram’a gönder
+                        if self.notifier.is_configured():
+                            try:
+                                pull_msg = self.notifier.format_pull_report(
+                                    date=current_date,
+                                    start_index=current_index,
+                                    end_index=current_index + max_features,
+                                    found=features_count,
+                                    saved=saved_count,
+                                    unsaved=unsaved_count,
+                                )
+                                self.notifier.send_message(pull_msg)
+                            except Exception as e:
+                                logger.error(f"Servis çekim raporu gönderilemedi: {e}")
+
                         # Sonraki sayfa için start_index'i artır
                         current_index += max_features
-                        
+
                         # tk_settings tablosuna güncelleme yap - sadece tarih ve index
                         db.update_setting(query_date=current_date, start_index=current_index, scrape_type=False)
-                        logger.info(f"Parsel sorgu ayarları güncellendi: query_date={current_date.strftime('%Y-%m-%d')}, start_index={current_index}")
+                        logger.info(
+                            f"Parsel sorgu ayarları güncellendi: query_date={current_date.strftime('%Y-%m-%d')}, start_index={current_index}"
+                        )
 
                         # Eğer çekilen parsel sayısı 1000'den azsa, tüm veriler çekilmiş demektir
                         if features_count < max_features:
-                            logger.info(f"[{current_date.isoformat()}] Index {current_index - max_features} - {current_index} arasında toplam {features_count} parsel çekildi. Tüm veriler çekildi.")
+                            logger.info(
+                                f"[{current_date.isoformat()}] Index {current_index - max_features} - {current_index} arasında toplam "
+                                f"{features_count} parsel çekildi. Tüm veriler çekildi."
+                            )
                             current_date = current_date + timedelta(days=1)
                             current_index = 0
-                    
+
                     except Exception as e:
                         logger.error(f"Veritabanına kaydetme hatası: {e}")
                         summary_errors += 1
-                        if self.notifier.is_configured():
-                            self.notifier.send_message(
-                                f"❗ Günlük senkronizasyon: DB kayıt hatası\n"
-                                f"• Tarih: {current_date.strftime('%Y-%m-%d')}\n"
-                                f"• Index: {current_index} - {current_index + max_features}\n"
-                                f"• Hata: {str(e)[:300]}"
-                            )
                         break
                 else:
                     logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında kaydedilecek parsel verisi bulunamadı")
@@ -580,13 +618,6 @@ class TKGMScraper:
             except Exception as e:
                 logger.error(f"Parsel verilerini işlerken hata: {e}")
                 summary_errors += 1
-                if self.notifier.is_configured():
-                    self.notifier.send_message(
-                        f"❗ Günlük senkronizasyon: İşleme hatası\n"
-                        f"• Tarih: {current_date.strftime('%Y-%m-%d')}\n"
-                        f"• Index: {current_index} - {current_index + max_features}\n"
-                        f"• Hata: {str(e)[:300]}"
-                    )
                 break
         
         # İşlem tamamlandığında final güncelleme
@@ -619,14 +650,19 @@ class TKGMScraper:
     def sync_fully_parcels(self, start_index: Optional[int] = 0):
         """Tüm parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
         logger.info(f"Tüm parsel verilerini senkronize etme işlemi başlatılıyor...")
-        max_features = os.getenv('MAX_FEATURES', 1000)
+        max_features = int(os.getenv('MAX_FEATURES', 1000))
         
         db = DatabaseManager()
         current_index = start_index
         current_date = datetime.now()
                 
-        # TKGMClient instance'ını döngü dışında bir kez oluştur
-        client = TKGMClient(typename=os.getenv('PARSELLER', 'TKGM:parseller'), db_manager=db)
+        # TKGMClient: sınıf örneğini kullan, sinyal ile durdurulabilir olsun
+        client = getattr(self, 'client', None)
+        if client is None:
+            client = TKGMClient(db_manager=db)
+            self.client = client
+        client.typename = os.getenv('PARSELLER', 'TKGM:parseller')
+        client.max_features = max_features
         
         while self.running:
             logger.info(f"Index {current_index} - {current_index + max_features} arasında işleniyor")
@@ -641,6 +677,8 @@ class TKGMScraper:
                 break
             
             processor = WFSGeometryProcessor()
+            if not self.running:
+                break
             
             try:
                 # XML'i parse et
@@ -657,6 +695,8 @@ class TKGMScraper:
                 
                 # Process each feature member
                 for i, feature_member in enumerate(feature_members):
+                    if not self.running:
+                        break
                     try:
                         # Find parsel elements
                         elements = []
@@ -666,6 +706,8 @@ class TKGMScraper:
                         
                         # Her feature_member için parsel işle
                         for elem in elements:
+                            if not self.running:
+                                break
                             try:
                                 # Extract FID from parsel element
                                 fid_full = elem.get('fid', '')
@@ -815,8 +857,9 @@ class TKGMScraper:
                 # Veritabanına kaydet
                 if all_features:
                     try:
-                        db.insert_parcels(all_features)
-                        logger.info(f"{len(all_features)} parsel veritabanına kaydedildi")
+                        saved_count = db.insert_parcels(all_features)
+                        unsaved_count = max(0, features_count - saved_count)
+                        logger.info(f"{saved_count} parsel veritabanına kaydedildi, {unsaved_count} kaydedilemedi")
                         
                         # Sonraki sayfa için start_index'i artır
                         current_index += max_features

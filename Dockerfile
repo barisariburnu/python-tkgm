@@ -60,6 +60,7 @@ RUN apt-get update && apt-get install -y \
 # Install uv (fast Python package manager) and add to PATH
 RUN curl -Ls https://astral.sh/uv/install.sh | sh
 ENV PATH=/root/.local/bin:$PATH
+RUN ln -sf /root/.local/bin/uv /usr/local/bin/uv
 
 # Oracle Instant Client kurulumu - GDAL'dan ÖNCE
 COPY oracle-client/instantclient-basic-linux.x64-21.16.0.0.0dbru.zip /tmp/
@@ -137,10 +138,12 @@ RUN uv pip install --system -r requirements.txt \
 # Scripts kopyala
 COPY scripts/sync.sh /app/scripts/sync.sh
 RUN chmod +x /app/scripts/sync.sh
+RUN sed -i 's/\r$//' /app/scripts/sync.sh
 
 # Entrypoint script'ini kopyala ve çalıştırılabilir yap
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh
 
 # Cron job'ları ayarla
 RUN echo "0 * * * * root cd /app && /usr/bin/python3 /app/main.py --daily >> /app/logs/cron.log 2>&1" > /etc/cron.d/tkgm && \

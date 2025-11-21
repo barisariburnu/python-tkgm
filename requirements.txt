@@ -5,3 +5,6 @@ shapely>=2.0.2
 loguru==0.7.2
 pyproj>=3.7.1
 GDAL==3.8.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+lxml>=6.0.2
