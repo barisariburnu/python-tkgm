@@ -627,25 +627,6 @@ class TKGMScraper:
             logger.info(f"İşlem kullanıcı tarafından durduruldu")
         else:
             logger.info(f"Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel çekildi. Tüm veriler çekildi. Son işlenen tarih: {current_date.strftime('%Y-%m-%d')}")
-        
-        # Günlük özet bildirimi
-        if self.notifier.is_configured():
-            try:
-                run_end = datetime.now()
-                message = self.notifier.format_daily_summary(
-                    start_dt=run_start,
-                    end_dt=run_end,
-                    pages=summary_pages,
-                    found=summary_found,
-                    saved=summary_saved,
-                    empty_pages=summary_empty_pages,
-                    errors=summary_errors,
-                )
-                self.notifier.send_message(message)
-                logger.info("Günlük senkronizasyon özeti Telegram’a gönderildi")
-            except Exception as e:
-                logger.error(f"Günlük özet Telegram’a gönderilemedi: {e}")
-
 
     def sync_fully_parcels(self, start_index: Optional[int] = 0):
         """Tüm parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""

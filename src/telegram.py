@@ -138,28 +138,6 @@ class TelegramNotifier:
         message = self.format_stats_message(stats)
         return self.send_message(message)
 
-    def format_daily_summary(
-        self,
-        start_dt: datetime,
-        end_dt: datetime,
-        pages: int,
-        found: int,
-        saved: int,
-        empty_pages: int,
-        errors: int,
-    ) -> str:
-        """Senkronizasyon özeti mesajını üretir"""
-        lines = [
-            "📬 Senkronizasyon Özeti\n",
-            f"• Aralık: {start_dt.strftime('%Y-%m-%d %H:%M')} → {end_dt.strftime('%Y-%m-%d %H:%M')}",
-            f"• Sayfa: {pages}",
-            f"• Bulunan Parsel: {found:,}",
-            f"• Kaydedilen Parsel: {saved:,}",
-            f"• Boş Sayfa: {empty_pages}",
-            f"• Hata: {errors}",
-        ]
-        return "\n".join(lines)
-
     def format_pull_report(
         self,
         date: datetime,
