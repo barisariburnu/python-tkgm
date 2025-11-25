@@ -19,19 +19,19 @@ class Settings(BaseSettings):
         extra="ignore"
     )
     
-    # PostgreSQL Configuration
-    POSTGRES_HOST: str = Field(..., description="PostgreSQL host address")
-    POSTGRES_PORT: int = Field(default=5432, ge=1, le=65535, description="PostgreSQL port")
-    POSTGRES_DB: str = Field(..., description="Database name")
-    POSTGRES_USER: str = Field(..., description="Database user")
-    POSTGRES_PASS: str = Field(..., description="Database password")
+    # PostgreSQL Source Configuration
+    POSTGRES_SOURCE_HOST: str = Field(..., description="PostgreSQL host address")
+    POSTGRES_SOURCE_PORT: int = Field(default=5432, ge=1, le=65535, description="PostgreSQL port")
+    POSTGRES_SOURCE_DB: str = Field(..., description="Database name")
+    POSTGRES_SOURCE_USER: str = Field(..., description="Database user")
+    POSTGRES_SOURCE_PASS: str = Field(..., description="Database password")
     
     # Oracle Configuration (Optional - for sync script)
-    ORACLE_HOST: Optional[str] = Field(default=None, description="Oracle host address")
-    ORACLE_PORT: Optional[int] = Field(default=1521, ge=1, le=65535, description="Oracle port")
-    ORACLE_SERVICE: Optional[str] = Field(default=None, description="Oracle service name")
-    ORACLE_USER: Optional[str] = Field(default=None, description="Oracle user")
-    ORACLE_PASS: Optional[str] = Field(default=None, description="Oracle password")
+    ORACLE_TARGET_HOST: Optional[str] = Field(default=None, description="Oracle host address")
+    ORACLE_TARGET_PORT: Optional[int] = Field(default=1521, ge=1, le=65535, description="Oracle port")
+    ORACLE_TARGET_SERVICE_NAME: Optional[str] = Field(default=None, description="Oracle service name")
+    ORACLE_TARGET_USER: Optional[str] = Field(default=None, description="Oracle user")
+    ORACLE_TARGET_PASS: Optional[str] = Field(default=None, description="Oracle password")
     
     # TKGM Service Configuration
     TKGM_BASE_URL: str = Field(

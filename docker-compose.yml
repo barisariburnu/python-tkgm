@@ -6,19 +6,26 @@ services:
       dockerfile: Dockerfile
     container_name: tkgm
     environment:
-      # PostgreSQL veritabanı bağlantı bilgileri
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASS: ${POSTGRES_PASS}
+      # PostgreSQL source veritabanı bağlantı bilgileri
+      POSTGRES_SOURCE_HOST: ${POSTGRES_SOURCE_HOST}
+      POSTGRES_SOURCE_PORT: ${POSTGRES_SOURCE_PORT}
+      POSTGRES_SOURCE_DB: ${POSTGRES_SOURCE_DB}
+      POSTGRES_SOURCE_USER: ${POSTGRES_SOURCE_USER}
+      POSTGRES_SOURCE_PASS: ${POSTGRES_SOURCE_PASS}
+
+      # PostgreSQL target veritabanı bağlantı bilgileri
+      POSTGRES_TARGET_HOST: ${POSTGRES_TARGET_HOST}
+      POSTGRES_TARGET_PORT: ${POSTGRES_TARGET_PORT}
+      POSTGRES_TARGET_DB: ${POSTGRES_TARGET_DB}
+      POSTGRES_TARGET_USER: ${POSTGRES_TARGET_USER}
+      POSTGRES_TARGET_PASS: ${POSTGRES_TARGET_PASS}
 
       # Oracle veritabanı bağlantı bilgileri
-      ORACLE_HOST: ${ORACLE_HOST:-}
-      ORACLE_PORT: ${ORACLE_PORT:-1521}
-      ORACLE_SERVICE_NAME: ${ORACLE_SERVICE_NAME:-}
-      ORACLE_USER: ${ORACLE_USER:-}
-      ORACLE_PASS: ${ORACLE_PASS:-}
+      ORACLE_TARGET_HOST: ${ORACLE_TARGET_HOST:-}
+      ORACLE_TARGET_PORT: ${ORACLE_TARGET_PORT:-1521}
+      ORACLE_TARGET_SERVICE_NAME: ${ORACLE_TARGET_SERVICE_NAME:-}
+      ORACLE_TARGET_USER: ${ORACLE_TARGET_USER:-}
+      ORACLE_TARGET_PASS: ${ORACLE_TARGET_PASS:-}
 
       # WFS servis bilgileri
       TKGM_USERNAME: ${TKGM_USERNAME:-}
@@ -34,6 +41,6 @@ services:
       - .:/app
       - ./logs:/app/logs
     restart: unless-stopped
-    command: ["/entrypoint.sh"]
+    command: [ "/entrypoint.sh" ]
     stdin_open: true
     tty: true

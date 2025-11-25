@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 # =============================================================================
 # TKGM Oracle Senkronizasyonu - Optimize Edilmiş Script
@@ -33,18 +33,18 @@ load_config() {
     LOG_FILE="${log_dir:-./}/sync_$(date +%Y%m%d_%H%M%S).log"
     
     # Database configuration
-    POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
-    POSTGRES_PORT="${POSTGRES_PORT:-5432}"
-    POSTGRES_DB="${POSTGRES_DB:-cadastral_db}"
-    POSTGRES_USER="${POSTGRES_USER:-postgres}"
-    POSTGRES_PASS="${POSTGRES_PASS:-password}"
+    POSTGRES_SOURCE_HOST="${POSTGRES_SOURCE_HOST:-localhost}"
+    POSTGRES_SOURCE_PORT="${POSTGRES_SOURCE_PORT:-5432}"
+    POSTGRES_SOURCE_DB="${POSTGRES_SOURCE_DB:-cadastral_db}"
+    POSTGRES_SOURCE_USER="${POSTGRES_SOURCE_USER:-postgres}"
+    POSTGRES_SOURCE_PASS="${POSTGRES_SOURCE_PASS:-password}"
     
-    ORACLE_HOST="${ORACLE_HOST:-localhost}"
-    ORACLE_PORT="${ORACLE_PORT:-1521}"
-    ORACLE_SERVICE_NAME="${ORACLE_SERVICE_NAME:-ORCL}"
-    ORACLE_USER="${ORACLE_USER:-cadastral}"
-    ORACLE_PASS="${ORACLE_PASS:-password}"
-    ORACLE_TABLE="${ORACLE_TABLE:-TK_PARSEL}"
+    ORACLE_TARGET_HOST="${ORACLE_TARGET_HOST:-localhost}"
+    ORACLE_TARGET_PORT="${ORACLE_TARGET_PORT:-1521}"
+    ORACLE_TARGET_SERVICE_NAME="${ORACLE_TARGET_SERVICE_NAME:-ORCL}"
+    ORACLE_TARGET_USER="${ORACLE_TARGET_USER:-cadastral}"
+    ORACLE_TARGET_PASS="${ORACLE_TARGET_PASS:-password}"
+    ORACLE_TARGET_TABLE="${ORACLE_TARGET_TABLE:-TK_PARSEL}"
     
     # Sync mode: truncate or recreate
     SYNC_MODE="${SYNC_MODE:-truncate}"
@@ -98,13 +98,13 @@ test_connections() {
     log "Testing database connections..."
     
     # Test PostgreSQL
-    if ! PGPASSWORD="$POSTGRES_PASS" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" \
-        -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT 1;" >/dev/null 2>&1; then
+    if ! PGPASSWORD="$POSTGRES_SOURCE_PASS" psql -h "$POSTGRES_SOURCE_HOST" -p "$POSTGRES_SOURCE_PORT" \
+        -U "$POSTGRES_SOURCE_USER" -d "$POSTGRES_SOURCE_DB" -c "SELECT 1;" >/dev/null 2>&1; then
         exit_with_error "PostgreSQL connection failed"
     fi
     
     # Test Oracle
-    if ! echo "SELECT 1 FROM DUAL;" | sqlplus -s "${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}" >/dev/null 2>&1; then
+    if ! echo "SELECT 1 FROM DUAL;" | sqlplus -s "${ORACLE_TARGET_USER}/${ORACLE_TARGET_PASS}@${ORACLE_TARGET_HOST}:${ORACLE_TARGET_PORT}/${ORACLE_TARGET_SERVICE_NAME}" >/dev/null 2>&1; then
         exit_with_error "Oracle connection failed"
     fi
     
@@ -164,13 +164,13 @@ get_record_count() {
     local table="$2"
     
     if [ "$db_type" = "postgres" ]; then
-        PGPASSWORD="$POSTGRES_PASS" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" \
-            -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+        PGPASSWORD="$POSTGRES_SOURCE_PASS" psql -h "$POSTGRES_SOURCE_HOST" -p "$POSTGRES_SOURCE_PORT" \
+            -U "$POSTGRES_SOURCE_USER" -d "$POSTGRES_SOURCE_DB" \
             -t -c "SELECT COUNT(*) FROM $table WHERE durum <> '2';" 2>/dev/null | \
             grep -E '[0-9]+' | head -1 | tr -d ' ' | xargs
     elif [ "$db_type" = "oracle" ]; then
         echo "SELECT COUNT(*) FROM $table;" | \
-            sqlplus -s "${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}" 2>/dev/null | \
+            sqlplus -s "${ORACLE_TARGET_USER}/${ORACLE_TARGET_PASS}@${ORACLE_TARGET_HOST}:${ORACLE_TARGET_PORT}/${ORACLE_TARGET_SERVICE_NAME}" 2>/dev/null | \
             grep -E '^[[:space:]]*[0-9]+' | head -1 | tr -d ' ' | xargs
     else
         echo "Error: Unknown database type" >&2
@@ -193,7 +193,7 @@ DECLARE
 BEGIN
     SELECT COUNT(*) INTO table_exists 
     FROM user_tables 
-    WHERE table_name = '$ORACLE_TABLE';
+    WHERE table_name = '$ORACLE_TARGET_TABLE';
     
     IF table_exists > 0 THEN
         DBMS_OUTPUT.PUT_LINE('EXISTS');
@@ -206,7 +206,7 @@ EOF
 )
     
     local result
-    result=$(echo "$check_sql" | sqlplus -s "${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}" 2>&1 | grep -E "EXISTS|NOT_EXISTS" | tail -1)
+    result=$(echo "$check_sql" | sqlplus -s "${ORACLE_TARGET_USER}/${ORACLE_TARGET_PASS}@${ORACLE_TARGET_HOST}:${ORACLE_TARGET_PORT}/${ORACLE_TARGET_SERVICE_NAME}" 2>&1 | grep -E "EXISTS|NOT_EXISTS" | tail -1)
     
     if [[ "$result" == *"EXISTS"* ]] && [[ "$result" != *"NOT_EXISTS"* ]]; then
         log "Table exists, truncating..."
@@ -219,22 +219,26 @@ EOF
 }
 
 truncate_oracle_table() {
-    log "Truncating Oracle table: $ORACLE_TABLE"
+    log "Truncating Oracle table: $ORACLE_TARGET_TABLE"
     
     local truncate_sql
     truncate_sql=$(cat << EOF
 DECLARE
     v_sequence_name VARCHAR2(100);
 BEGIN
+    -- Tabloyu NOLOGGING moduna al (archivelog azaltmak için)
+    EXECUTE IMMEDIATE 'ALTER TABLE $ORACLE_TARGET_TABLE NOLOGGING';
+    DBMS_OUTPUT.PUT_LINE('Table set to NOLOGGING mode');
+    
     -- Tabloyu truncate et
-    EXECUTE IMMEDIATE 'TRUNCATE TABLE $ORACLE_TABLE';
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE $ORACLE_TARGET_TABLE';
     DBMS_OUTPUT.PUT_LINE('Table truncated successfully');
     
     -- OGR_FID ile ilişkili sequence'i bul ve sıfırla
     BEGIN
         SELECT sequence_name INTO v_sequence_name
         FROM user_sequences
-        WHERE sequence_name LIKE '%' || '$ORACLE_TABLE' || '%'
+        WHERE sequence_name LIKE '%' || '$ORACLE_TARGET_TABLE' || '%'
         AND ROWNUM = 1;
         
         -- Sequence'i drop et
@@ -258,7 +262,7 @@ EOF
 )
     
     local truncate_output
-    truncate_output=$(echo "$truncate_sql" | sqlplus -s "${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}" 2>&1)
+    truncate_output=$(echo "$truncate_sql" | sqlplus -s "${ORACLE_TARGET_USER}/${ORACLE_TARGET_PASS}@${ORACLE_TARGET_HOST}:${ORACLE_TARGET_PORT}/${ORACLE_TARGET_SERVICE_NAME}" 2>&1)
     
     local exit_code=$?
     echo "$truncate_output" >> "$LOG_FILE"
@@ -290,10 +294,10 @@ sync_data() {
         # Tablo var - APPEND modu
         log "Using APPEND mode (table exists)..."
         ogr2ogr -f "OCI" \
-            "OCI:${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}:${ORACLE_TABLE}" \
-            "PG:host=${POSTGRES_HOST} port=${POSTGRES_PORT} dbname=${POSTGRES_DB} user=${POSTGRES_USER} password=${POSTGRES_PASS}" \
+            "OCI:${ORACLE_TARGET_USER}/${ORACLE_TARGET_PASS}@${ORACLE_TARGET_HOST}:${ORACLE_TARGET_PORT}/${ORACLE_TARGET_SERVICE_NAME}:${ORACLE_TARGET_TABLE}" \
+            "PG:host=${POSTGRES_SOURCE_HOST} port=${POSTGRES_SOURCE_PORT} dbname=${POSTGRES_SOURCE_DB} user=${POSTGRES_SOURCE_USER} password=${POSTGRES_SOURCE_PASS}" \
             -sql "$sql_query" \
-            -nln "$ORACLE_TABLE" \
+            -nln "$ORACLE_TARGET_TABLE" \
             -append \
             -lco LAUNDER=NO \
             -lco GEOMETRY_NAME=GEOMETRY \
@@ -310,10 +314,10 @@ sync_data() {
         # Tablo yok - CREATE modu
         log "Using CREATE mode (table will be created)..."
         ogr2ogr -f "OCI" \
-            "OCI:${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}:${ORACLE_TABLE}" \
-            "PG:host=${POSTGRES_HOST} port=${POSTGRES_PORT} dbname=${POSTGRES_DB} user=${POSTGRES_USER} password=${POSTGRES_PASS}" \
+            "OCI:${ORACLE_TARGET_USER}/${ORACLE_TARGET_PASS}@${ORACLE_TARGET_HOST}:${ORACLE_TARGET_PORT}/${ORACLE_TARGET_SERVICE_NAME}:${ORACLE_TARGET_TABLE}" \
+            "PG:host=${POSTGRES_SOURCE_HOST} port=${POSTGRES_SOURCE_PORT} dbname=${POSTGRES_SOURCE_DB} user=${POSTGRES_SOURCE_USER} password=${POSTGRES_SOURCE_PASS}" \
             -sql "$sql_query" \
-            -nln "$ORACLE_TABLE" \
+            -nln "$ORACLE_TARGET_TABLE" \
             -nlt MULTIPOLYGON \
             -lco LAUNDER=NO \
             -lco GEOMETRY_NAME=GEOMETRY \
@@ -343,7 +347,7 @@ sync_data() {
     # Veri kontrolü yap
     log "Verifying data transfer..."
     local target_count
-    target_count=$(get_record_count "oracle" "$ORACLE_TABLE")
+    target_count=$(get_record_count "oracle" "$ORACLE_TARGET_TABLE")
     
     if [ -n "$target_count" ] && [ "$target_count" -gt 0 ]; then
         log_success "Data transfer completed. Transferred records: $target_count"
@@ -351,6 +355,33 @@ sync_data() {
         log_error "No data transferred to Oracle"
         exit 1
     fi
+    
+    # Tabloyu LOGGING moduna geri al
+    set_table_logging "LOGGING"
+}
+
+set_table_logging() {
+    log "Setting Oracle table to $1 mode..."
+    
+    local mode="$1"
+    local logging_sql
+    logging_sql=$(cat <<EOF
+BEGIN
+    EXECUTE IMMEDIATE 'ALTER TABLE $ORACLE_TARGET_TABLE $mode';
+    DBMS_OUTPUT.PUT_LINE('Table set to $mode mode');
+    COMMIT;
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error setting $mode: ' || SQLERRM);
+        RAISE;
+END;
+/
+EOF
+)
+    
+    echo "$logging_sql" | sqlplus -s "${ORACLE_TARGET_USER}/${ORACLE_TARGET_PASS}@${ORACLE_TARGET_HOST}:${ORACLE_TARGET_PORT}/${ORACLE_TARGET_SERVICE_NAME}" 2>&1 | tee -a "$LOG_FILE"
+    
+    log_success "Table $mode mode set successfully"
 }
 
 create_spatial_index() {
@@ -361,7 +392,7 @@ create_spatial_index() {
 BEGIN
     -- Spatial index oluştur
     EXECUTE IMMEDIATE 
-    'CREATE INDEX ${ORACLE_TABLE}_GEOMETRY_IDX ON ${ORACLE_TABLE}(GEOMETRY) 
+    'CREATE INDEX ${ORACLE_TARGET_TABLE}_GEOMETRY_IDX ON ${ORACLE_TARGET_TABLE}(GEOMETRY) 
      INDEXTYPE IS MDSYS.SPATIAL_INDEX 
      PARAMETERS(''SDO_INDX_DIMS=2'')';
     
@@ -379,7 +410,7 @@ END;
 EOF
 )
     
-    echo "$index_sql" | sqlplus -s "${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}" 2>&1 | tee -a "$LOG_FILE"
+    echo "$index_sql" | sqlplus -s "${ORACLE_TARGET_USER}/${ORACLE_TARGET_PASS}@${ORACLE_TARGET_HOST}:${ORACLE_TARGET_PORT}/${ORACLE_TARGET_SERVICE_NAME}" 2>&1 | tee -a "$LOG_FILE"
     
     log_success "Spatial index created"
 }
@@ -388,8 +419,8 @@ update_statistics() {
     log "Updating Oracle table statistics..."
     
     local stats_output
-    stats_output=$(echo "BEGIN DBMS_STATS.GATHER_TABLE_STATS('${ORACLE_USER}', '${ORACLE_TABLE}'); END;" | \
-        sqlplus -s "${ORACLE_USER}/${ORACLE_PASS}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE_NAME}" 2>&1)
+    stats_output=$(echo "BEGIN DBMS_STATS.GATHER_TABLE_STATS('${ORACLE_TARGET_USER}', '${ORACLE_TARGET_TABLE}'); END;" | \
+        sqlplus -s "${ORACLE_TARGET_USER}/${ORACLE_TARGET_PASS}@${ORACLE_TARGET_HOST}:${ORACLE_TARGET_PORT}/${ORACLE_TARGET_SERVICE_NAME}" 2>&1)
     
     local exit_code=$?
     echo "$stats_output" >> "$LOG_FILE"

@@ -101,18 +101,18 @@ RUN cd /tmp \
     && cd gdal-${GDAL_VERSION} \
     && mkdir build && cd build \
     && cmake .. \
-        -DCMAKE_INSTALL_PREFIX=/usr \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DGDAL_USE_ORACLE=ON \
-        -DOracle_ROOT=/usr/lib/oracle/instantclient \
-        -DOracle_INCLUDE_DIR=/usr/lib/oracle/instantclient/sdk/include \
-        -DOracle_LIBRARY=/usr/lib/oracle/instantclient/libclntsh.so \
-        -DGDAL_USE_POSTGRESQL=ON \
-        -DGDAL_USE_GEOS=ON \
-        -DGDAL_USE_GEOTIFF=ON \
-        -DGDAL_USE_CURL=ON \
-        -DGDAL_USE_SQLITE3=ON \
-        -DGDAL_USE_PROJ=ON \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DGDAL_USE_ORACLE=ON \
+    -DOracle_ROOT=/usr/lib/oracle/instantclient \
+    -DOracle_INCLUDE_DIR=/usr/lib/oracle/instantclient/sdk/include \
+    -DOracle_LIBRARY=/usr/lib/oracle/instantclient/libclntsh.so \
+    -DGDAL_USE_POSTGRESQL=ON \
+    -DGDAL_USE_GEOS=ON \
+    -DGDAL_USE_GEOTIFF=ON \
+    -DGDAL_USE_CURL=ON \
+    -DGDAL_USE_SQLITE3=ON \
+    -DGDAL_USE_PROJ=ON \
     && make -j$(nproc) \
     && make install \
     && ldconfig \
@@ -136,20 +136,22 @@ RUN uv pip install --system -r requirements.txt \
     && python3 -c "from osgeo import gdal; print(gdal.__version__)" || (echo "GDAL Python binding missing" && exit 1)
 
 # Scripts kopyala
-COPY scripts/sync.sh /app/scripts/sync.sh
-RUN chmod +x /app/scripts/sync.sh
-RUN sed -i 's/\r$//' /app/scripts/sync.sh
+COPY scripts/sync-oracle.sh /app/scripts/sync-oracle.sh
+COPY scripts/sync-postgresql.sh /app/scripts/sync-postgresql.sh
+COPY scripts/crontab /app/scripts/crontab
+RUN chmod +x /app/scripts/sync-oracle.sh /app/scripts/sync-postgresql.sh
+RUN sed -i 's/\r$//' /app/scripts/sync-oracle.sh
+RUN sed -i 's/\r$//' /app/scripts/sync-postgresql.sh
 
 # Entrypoint script'ini kopyala ve çalıştırılabilir yap
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh
 
-# Cron job'ları ayarla
-RUN echo "0 * * * * root cd /app && /usr/bin/python3 /app/main.py --daily >> /app/logs/cron.log 2>&1" > /etc/cron.d/tkgm && \
-    echo "30 * * * * root cd /app && /app/scripts/sync.sh >> /app/logs/cron.log 2>&1" >> /etc/cron.d/tkgm && \
-    echo "" >> /etc/cron.d/tkgm && \
-    chmod 0644 /etc/cron.d/tkgm
+# Cron job'ları ayarla - crontab dosyasını kullan
+COPY scripts/crontab /etc/cron.d/tkgm
+RUN chmod 0644 /etc/cron.d/tkgm && \
+    crontab /etc/cron.d/tkgm
 
 # Log dizinini oluştur
 RUN mkdir -p /app/logs

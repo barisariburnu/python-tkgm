@@ -1,0 +1,11 @@
+# TKGM Veritabanı Senkronizasyon Görevleri
+# Her gün saat 20:00'de çalıştırılır
+
+# Oracle senkronizasyonu - Her gün 20:00'de
+0 20 * * * /app/scripts/sync-oracle.sh >> /app/logs/cron-oracle.log 2>&1
+
+# PostgreSQL senkronizasyonu - Her gün 20:00'de
+0 20 * * * /app/scripts/sync-postgresql.sh >> /app/logs/cron-postgresql.log 2>&1
+
+# Log rotation - Her hafta Pazar günü 23:00'te
+0 23 * * 0 find /app/logs -name "*.log" -type f -mtime +30 -delete

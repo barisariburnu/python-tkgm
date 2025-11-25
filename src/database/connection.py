@@ -27,11 +27,11 @@ class DatabaseConnection:
     
     def __init__(self):
         # Pydantic Settings kullan (type-safe, validated)
-        self.host = settings.POSTGRES_HOST
-        self.database = settings.POSTGRES_DB
-        self.port = settings.POSTGRES_PORT
-        self.user = settings.POSTGRES_USER
-        self.password = settings.POSTGRES_PASS
+        self.host = settings.POSTGRES_SOURCE_HOST
+        self.database = settings.POSTGRES_SOURCE_DB
+        self.port = settings.POSTGRES_SOURCE_PORT
+        self.user = settings.POSTGRES_SOURCE_USER
+        self.password = settings.POSTGRES_SOURCE_PASS
         
         self.connection_string = f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
         

@@ -33,9 +33,9 @@ TKGM WFS servisinden parsel, mahalle ve ilçe verilerini otomatik olarak çeker,
    - Önemli değişkenler:
      - `TKGM_BASE_URL`, `TKGM_USERNAME`, `TKGM_PASSWORD`
      - `MAXFEATURES`, `STARTINDEX`
-     - `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASS`
+     - `POSTGRES_SOURCE_HOST`, `POSTGRES_SOURCE_DB`, `POSTGRES_SOURCE_PORT`, `POSTGRES_SOURCE_USER`, `POSTGRES_SOURCE_PASS`
      - `PARSELLER`, `MAHALLELER`, `ILCELER`, `TARGET_SRID`
-     - (Opsiyonel Oracle) `ORACLE_HOST`, `ORACLE_PORT`, `ORACLE_SERVICE_NAME`, `ORACLE_USER`, `ORACLE_PASS`
+     - (Opsiyonel Oracle) `ORACLE_TARGET_HOST`, `ORACLE_TARGET_PORT`, `ORACLE_TARGET_SERVICE_NAME`, `ORACLE_TARGET_USER`, `ORACLE_TARGET_PASS`
 3. Python ortamı (Docker kullanmadan):
    - `python -m venv venv && venv\Scripts\activate` (Windows)
    - `pip install -r requirements.txt`
