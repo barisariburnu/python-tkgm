@@ -116,45 +116,7 @@ test_connections() {
 
 get_sql_query() {
     cat <<'EOF'
-SELECT 
-    CAST(p.id AS NUMERIC(38,0)) AS "object_id",
-    CAST(p.fid AS NUMERIC(20,0)) AS "fid",
-    CAST(p.tapukimlikno AS NUMERIC(20,0)) AS "tapu_kimlik_no",
-    CAST(m.ilceref AS NUMERIC(38,0)) AS "ilce_id",   
-    CAST(i.ad AS VARCHAR(100)) AS "ilce_adi", 
-    CAST(m.fid AS NUMERIC(38,0)) AS "tapu_mahalle_id",
-    CAST(p.tapumahalleref AS NUMERIC(20,0)) AS "tapu_mahalle_ref",
-    CAST(m.tapumahallead AS VARCHAR(100)) AS "tapu_mahalle_adi",
-    CAST(p.tapuzeminref AS NUMERIC(20,0)) AS "tapu_zemin_ref",
-    CAST(p.tapuzeminref AS NUMERIC(20,0)) AS "zemin_id",
-    CAST(p.adano AS VARCHAR(255)) AS "ada",
-    CAST(p.parselno AS VARCHAR(255)) AS "parsel",
-    CAST(p.tip AS NUMERIC(38,0)) AS "tip",
-    CAST(p.tapualan AS FLOAT) AS "alan", 
-    CAST(p.kadastroalan AS FLOAT) AS "kadastro_alan",  
-    CAST(p.tapucinsid AS NUMERIC(20,0)) AS "tapu_cins_id",  
-    CAST(p.tapucinsaciklama AS VARCHAR(1000)) AS "tapu_cins_aciklama", 
-    CAST(p.durum AS NUMERIC(38,0)) AS "durum",
-    CAST(d.adi AS VARCHAR(255)) AS "durum_aciklama", 
-    CAST(p.hazineparseldurum AS NUMERIC(38,0)) AS "hazine_parsel_durum",
-    CAST(hpd.adi AS VARCHAR(255)) AS "hazine_parsel_durum_aciklama",
-    CAST(p.kmdurum AS NUMERIC(38,0)) AS "km_durum",
-    CAST(kmd.adi AS VARCHAR(255)) AS "km_durum_aciklamasi", 
-    CAST(p.onaydurum AS NUMERIC(38,0)) AS "onay_durum",
-    CAST(od.adi AS VARCHAR(255)) AS "onay_durum_aciklama", 
-    CAST(p.sistemkayittarihi AS timestamp(6)) AS "sistem_kayit_tarihi",
-    CAST(TO_CHAR(p.sistemguncellemetarihi, 'YYYY-MM-DD HH24:MI:SS') AS VARCHAR(4000)) AS "m_date",
-    CAST(COALESCE(p.adano::text, '') || '-' || COALESCE(p.parselno::text, '') || '-' || 
-         COALESCE(i.ad, '') || '-' || COALESCE(m.tapumahallead, '') AS VARCHAR(4000)) AS "apim",
-    p.geom AS "geometry"
-FROM public.tk_parsel p
-LEFT JOIN public.tk_kat_mulkiyet_durum_tip kmd ON kmd.kod = p.kmdurum 
-LEFT JOIN public.tk_hazine_parsel_durum_tip hpd ON hpd.kod = p.hazineparseldurum 
-LEFT JOIN public.tk_durum d ON d.kod = p.durum 
-LEFT JOIN public.tk_onay_durum od ON od.kod = p.onaydurum 
-LEFT JOIN public.tk_mahalle m ON m.tapukimlikno = p.tapumahalleref
-LEFT JOIN public.tk_ilce i ON i.fid = m.ilceref
-WHERE p.durum <> '2'
+SELECT * FROM public.tk_parsel p
 EOF
 }
 
@@ -168,7 +130,7 @@ get_record_count() {
     
     PGPASSWORD="$pass" psql -h "$host" -p "$port" \
         -U "$user" -d "$db" \
-        -t -c "SELECT COUNT(*) FROM $table WHERE durum <> '2';" 2>/dev/null | \
+        -t -c "SELECT COUNT(*) FROM $table;" 2>/dev/null | \
         grep -E '[0-9]+' | head -1 | tr -d ' ' | xargs
 }
 
