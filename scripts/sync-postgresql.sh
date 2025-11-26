@@ -30,7 +30,7 @@ load_config() {
             break
         fi
     done
-    LOG_FILE="${log_dir:-./}/sync_postgresql_$(date +%Y%m%d_%H%M%S).log"
+    LOG_FILE="${log_dir:-./}/cron_postgresql.log"
     
     # Source Database configuration (PostgreSQL)
     POSTGRES_SOURCE_HOST="${POSTGRES_SOURCE_HOST:-localhost}"
@@ -298,6 +298,29 @@ main() {
     local duration=$(($(date +%s) - START_TIME))
     log_success "Sync completed in ${duration} seconds"
     log "Log file: $LOG_FILE"
+    
+    # Log temizliği yap (Self-Cleanup)
+    cleanup_log_file
+}
+
+cleanup_log_file() {
+    local max_size=$((100 * 1024 * 1024)) # 100MB
+    local keep_size=$((50 * 1024 * 1024)) # 50MB
+    
+    if [ -f "$LOG_FILE" ]; then
+        local current_size=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)
+        
+        if [ "$current_size" -gt "$max_size" ]; then
+            log "Log file size ($((current_size/1024/1024))MB) exceeds limit ($((max_size/1024/1024))MB). Truncating..."
+            
+            # Son N byte'ı al (tail -c) - Binary güvenli ve hızlı
+            tail -c "$keep_size" "$LOG_FILE" > "${LOG_FILE}.tmp"
+            mv "${LOG_FILE}.tmp" "$LOG_FILE"
+            
+            # Temizlik bilgisini loga ekle
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] Log file truncated. Kept last $((keep_size/1024/1024))MB." >> "$LOG_FILE"
+        fi
+    fi
 }
 
 # =============================================================================

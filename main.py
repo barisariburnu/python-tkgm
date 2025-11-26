@@ -1,6 +1,6 @@
 """
 TKGM WFS Veri Tarayıcısı - Ana Uygulama
-Türkiye Tapu ve Kadastro Genel Müdürlüğü parsel verilerini otomatik olarak toplar
+Türkiye Tapu ve Kadastro Genel Müdürlü parsel verilerini otomatik olarak toplar
 """
 
 import os
@@ -53,6 +53,31 @@ class TKGMScraper:
         # Log dizinini oluştur
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         
+        # --- Self-Cleanup (FIFO) ---
+        try:
+            if os.path.exists(log_file):
+                file_size = os.path.getsize(log_file)
+                max_size = 100 * 1024 * 1024  # 100 MB
+                keep_size = 50 * 1024 * 1024  # 50 MB
+                
+                if file_size > max_size:
+                    print(f"Log dosyası boyutu sınırı aştı ({file_size/1024/1024:.2f} MB). Temizleniyor...")
+                    
+                    # Son keep_size kadar veriyi oku
+                    with open(log_file, 'rb') as f:
+                        f.seek(-keep_size, 2)  # Sondan geriye git
+                        data = f.read()
+                    
+                    # Dosyayı yeniden yaz
+                    with open(log_file, 'wb') as f:
+                        f.write(data)
+                        f.write(f"\n[CLEANUP] Log file truncated. Kept last {keep_size/1024/1024:.2f} MB.\n".encode('utf-8'))
+                    
+                    print("Log dosyası temizlendi.")
+        except Exception as e:
+            print(f"Log temizleme hatası: {e}")
+        # ---------------------------
+        
         # Mevcut logları temizle
         logger.remove()
         
@@ -67,10 +92,7 @@ class TKGMScraper:
         logger.add(
             log_file,
             level=log_level,
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-            rotation="10 MB",
-            retention="30 days",
-            compression="zip"
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
         )
         
         logger.info(f"Loglama sistemi ayarlandı: {log_level} seviyesi, dosya: {log_file}")
@@ -153,7 +175,7 @@ class TKGMScraper:
             # Process each feature member
             for i, feature_member in enumerate(feature_members):
                 try:
-                    # Find mahalleler elements
+                    # Find ilceler elements
                     elements = []
                     for child in feature_member:
                         if 'ilceler' in child.tag:
@@ -570,7 +592,7 @@ class TKGMScraper:
                         )
                         summary_saved += saved_count
 
-                        # Başarılı çekim sonrası raporu Telegram’a gönder
+                        # Başarılı çekim sonrası raporu Telegram'a gönder
                         if self.notifier.is_configured():
                             try:
                                 pull_msg = self.notifier.format_pull_report(
@@ -945,7 +967,7 @@ def main():
     parser.add_argument('--neighbourhoods', action='store_true', help='Mahalle verilerini senkronize et')
     parser.add_argument('--districts', action='store_true', help='İlçe verilerini senkronize et')
     parser.add_argument('--stats', action='store_true', help='İstatistik verilerini göster')
-    parser.add_argument('--stats-telegram', action='store_true', help='İstatistikleri Telegram’a gönder')
+    parser.add_argument('--stats-telegram', action='store_true', help='İstatistikleri Telegram\'a gönder')
 
     try:
         args = parser.parse_args()
@@ -975,9 +997,9 @@ def main():
             else:
                 sent = scraper.notifier.send_stats(stats)
                 if sent:
-                    logger.info("İstatistikler Telegram’a gönderildi")
+                    logger.info("İstatistikler Telegram'a gönderildi")
                 else:
-                    logger.error("İstatistikler Telegram’a gönderilemedi")
+                    logger.error("İstatistikler Telegram'a gönderilemedi")
         else:
             parser.print_help()
 

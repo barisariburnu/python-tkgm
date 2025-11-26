@@ -121,21 +121,42 @@ POSTGRES_TARGET_TABLE=tk_parsel
 - Hata yönetimi
 - Timestamp'li log dosyaları
 
-## 📊 Loglar
+## 📊 Log Yönetimi
+### Merkezi Log Dosyaları
 
-Loglar `/app/logs` dizininde saklanır:
+Yeni loglama sisteminde her işlem tipi için **tek bir merkezi log dosyası** kullanılır:
 
 ```bash
-# Sync logları
-/app/logs/sync_YYYYMMDD_HHMMSS.log
-/app/logs/sync_postgresql_YYYYMMDD_HHMMSS.log
-
-# Cron logları
-/app/logs/cron-oracle.log
-/app/logs/cron-postgresql.log
+# Ana log dosyaları
+/app/logs/cron_oracle.log          # Oracle senkronizasyon logları
+/app/logs/cron_postgresql.log      # PostgreSQL senkronizasyon logları
+/app/logs/scraper.log               # Python scraper logları
 ```
 
-30 günden eski loglar otomatik olarak silinir (crontab içinde tanımlı).
+### Self-Cleanup (Kendi Kendini Temizleme)
+
+Her script (`sync-oracle.sh`, `sync-postgresql.sh`) kendi log dosyasını yönetir:
+
+- **Kontrol Zamanı**: Script çalışması bittiğinde
+- **Maksimum Boyut**: 100MB
+- **Tutulacak Boyut**: 50MB
+- **Mantık**: Boyut aşıldığında dosyanın son 50MB'lık kısmı tutulur, gerisi silinir.
+
+### Log Görüntüleme
+
+```bash
+# Son 100 satırı görüntüle
+tail -n 100 /app/logs/cron_oracle.log
+
+# Canlı takip et
+tail -f /app/logs/cron_oracle.log
+
+# Belirli bir tarih aralığı
+grep "2025-11-26" /app/logs/cron_oracle.log
+
+# Sadece hataları göster
+grep "ERROR" /app/logs/cron_oracle.log
+```
 
 ## 🔧 Bağımlılıklar
 
@@ -147,12 +168,11 @@ Loglar `/app/logs` dizininde saklanır:
 ## ⏰ Cron Zamanlaması
 
 ```bash
-# Her gün saat 20:00
+# Oracle senkronizasyonu - Her gün 20:00
 0 20 * * * /app/scripts/sync-oracle.sh
-0 20 * * * /app/scripts/sync-postgresql.sh
 
-# Her Pazar 23:00 - Log temizliği (30 günden eski)
-0 23 * * 0 find /app/logs -name "*.log" -type f -mtime +30 -delete
+# PostgreSQL senkronizasyonu - Her gün 20:00
+0 20 * * * /app/scripts/sync-postgresql.sh
 ```
 
 ### Farklı Saatler İçin
