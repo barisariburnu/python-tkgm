@@ -374,6 +374,7 @@ class TKGMScraper:
         summary_empty_pages = 0
         summary_errors = 0
         run_start = current_date
+        features_count = 0
                 
         # TKGMClient: sınıf örneğini kullan, sinyal ile durdurulabilir olsun
         client = getattr(self, 'client', None)
@@ -658,6 +659,7 @@ class TKGMScraper:
         db = DatabaseManager()
         current_index = start_index
         current_date = datetime.now()
+        features_count = 0
                 
         # TKGMClient: sınıf örneğini kullan, sinyal ile durdurulabilir olsun
         client = getattr(self, 'client', None)

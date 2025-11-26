@@ -150,7 +150,8 @@ RUN sed -i 's/\r$//' /entrypoint.sh
 
 # Cron job'ları ayarla - crontab dosyasını kullan
 COPY scripts/crontab /etc/cron.d/tkgm
-RUN chmod 0644 /etc/cron.d/tkgm && \
+RUN sed -i 's/\r$//' /etc/cron.d/tkgm && \
+    chmod 0644 /etc/cron.d/tkgm && \
     crontab /etc/cron.d/tkgm
 
 # Log dizinini oluştur
