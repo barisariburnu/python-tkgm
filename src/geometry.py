@@ -354,11 +354,8 @@ class WFSGeometryProcessor:
         results = []
         
         try:
-            # XML'i ayrıştır
-            root = self.parse_wfs_xml(xml_content)
-            
-            # Tüm özellik üyelerini bul
-            feature_members = root.findall('.//{http://www.opengis.net/gml}featureMember')
+            # XML'i ayrıştır - parse_wfs_xml zaten feature_members listesini döndürür
+            feature_members = self.parse_wfs_xml(xml_content)
             
             logger.info(f"{len(feature_members)} feature member bulundu")
             
@@ -397,6 +394,8 @@ class WFSGeometryProcessor:
                             'sistemguncellemetarihi': None,
                             'kmdurum': None,
                             'hazineparseldurum': None,
+                            'orjinalgeomwkt': None,
+                            'orjinalgeomkoordinatsistem': None,
                         }
                         
                         # Tüm özellik niteliklerini çıkar
@@ -434,6 +433,63 @@ class WFSGeometryProcessor:
                                 feature_data['kmdurum'] = child.text
                             elif tag_name == 'hazineparseldurum':
                                 feature_data['hazineparseldurum'] = child.text
+                            elif tag_name == 'orjinalgeomwkt':
+                                feature_data['orjinalgeomwkt'] = child.text
+                            elif tag_name == 'orjinalgeomkoordinatsistem':
+                                feature_data['orjinalgeomkoordinatsistem'] = child.text
+                        
+                        # ÖNCE orjinalgeomwkt'yi kontrol et - TKGM'den gelen doğru geometri!
+                        # ANCAK sadece Sistem 1 ve 2 için kullan (Sistem 3 ve diğerleri yanlış)
+                        coord_sys = feature_data.get('orjinalgeomkoordinatsistem', '')
+                        
+                        if feature_data.get('orjinalgeomwkt') and coord_sys in ('1', '2'):
+                            # Sistem 1 ve 2: orjinalgeomwkt zaten EPSG:2320 formatında - doğrudan kullan
+                            try:
+                                wkt_text = feature_data['orjinalgeomwkt'].strip()
+                                
+                                # WKT'den geometri tipini belirle
+                                geom_type = 'Polygon'
+                                if wkt_text.startswith('MULTIPOLYGON'):
+                                    geom_type = 'MultiPolygon'
+                                elif wkt_text.startswith('POINT'):
+                                    geom_type = 'Point'
+                                elif wkt_text.startswith('LINESTRING'):
+                                    geom_type = 'LineString'
+                                elif wkt_text.startswith('MULTILINESTRING'):
+                                    geom_type = 'MultiLineString'
+                                elif wkt_text.startswith('MULTIPOINT'):
+                                    geom_type = 'MultiPoint'
+                                
+                                # WKT'den halkalar çıkar (zaten EPSG:2320 formatında)
+                                rings = self._rings_from_wkt(wkt_text, geom_type)
+                                
+                                # Sonuç sözlüğü oluştur
+                                result = {
+                                    **feature_data,
+                                    'geometry_type': geom_type,
+                                    'rings_count': len(rings),
+                                    'original_coords': [],  # GML koordinatlarını kullanmıyoruz
+                                    'transformed_coords': rings[0] if rings else [],
+                                    'all_original_rings': [],
+                                    'all_transformed_rings': rings,
+                                    'original_crs': self.target_crs,  # orjinalgeomwkt zaten hedef CRS'de
+                                    'target_crs': self.target_crs,
+                                    'wkt': wkt_text  # TKGM'den gelen doğru WKT'yi kullan
+                                }
+                                
+                                results.append(result)
+                                logger.info(f"✓ orjinalgeomwkt kullanıldı (Sistem {coord_sys}, EPSG:2320) - Özellik {i+1}: Parsel {feature_data['parselno']}, FID: {fid_value}, Geometri: {geom_type}")
+                                continue  # Bir sonraki feature'a geç
+                                
+                            except Exception as e:
+                                logger.warning(f"orjinalgeomwkt işlenirken hata: {e}, fallback olarak gml:geom kullanılacak")
+                        
+                        # FALLBACK: orjinalgeomwkt yoksa veya Sistem 3/diğer sistemler için gml:geom kullan
+                        # Sistem 3 için: orjinalgeomwkt yanlış koordinat sisteminde, PyProj dönüşümü gerekli
+                        if coord_sys == '3':
+                            logger.info(f"ℹ Sistem 3 tespit edildi - gml:geom'den PyProj ile dönüşüm yapılacak (FID: {fid_value})")
+                        elif not feature_data.get('orjinalgeomwkt'):
+                            logger.debug(f"orjinalgeomwkt yok - gml:geom kullanılacak (FID: {fid_value})")
                         
                         # Geometri öğelerini bul ve işle (MultiPolygon'u Polygon'dan önceliklendir)
                         geometry_found = False
@@ -467,7 +523,10 @@ class WFSGeometryProcessor:
                                     results.append(result)
                                     geometry_found = True
                                     
-                                    logger.info(f"{geometry_data['geometry_type']} işlendi - Özellik {i+1}: Parsel {feature_data['parselno']}, FID: {fid_value}, Halkalar: {geometry_data['rings_count']}")
+                                    if coord_sys == '3':
+                                        logger.info(f"✓ gml:geom kullanıldı (Sistem 3, PyProj EPSG:4326→2320) - Özellik {i+1}: Parsel {feature_data['parselno']}, FID: {fid_value}")
+                                    else:
+                                        logger.warning(f"⚠ gml:geom kullanıldı (fallback, hassasiyet düşük olabilir) - Özellik {i+1}: Parsel {feature_data['parselno']}, FID: {fid_value}")
                                     break  # Bu tipte sadece ilk geometri öğesini işle
                                     
                                 except Exception as e:
@@ -493,11 +552,8 @@ class WFSGeometryProcessor:
         results = []
         
         try:
-            # XML'i ayrıştır
-            root = self.parse_wfs_xml(xml_content)
-            
-            # Tüm özellik üyelerini bul
-            feature_members = root.findall('.//{http://www.opengis.net/gml}featureMember')
+            # XML'i ayrıştır - parse_wfs_xml zaten feature_members listesini döndürür
+            feature_members = self.parse_wfs_xml(xml_content)
             
             logger.info(f"{len(feature_members)} feature member bulundu")
             
