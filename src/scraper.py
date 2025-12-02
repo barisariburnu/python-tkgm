@@ -358,6 +358,7 @@ class TKGMScraper:
         """Tüm parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
         logger.info("Tüm parsel verilerini senkronize etme işlemi başlatılıyor...")
         max_features = int(os.getenv('MAX_FEATURES', 1000))
+        cutoff_date = os.getenv('CUTOFF_DATE', '2025-10-09')
         current_index = start_index
         current_date = datetime.now()
         features_count = 0
@@ -372,7 +373,7 @@ class TKGMScraper:
         while self.running:
             logger.info(f"Index {current_index} - {current_index + max_features} arasında işleniyor")
             
-            cql_filter = "(onaydurum=1 and sistemguncellemetarihi<'2025-10-09' and sistemkayittarihi<'2025-10-09')"
+            cql_filter = f"(onaydurum=1 and sistemguncellemetarihi<'{cutoff_date}' and sistemkayittarihi<'{cutoff_date}')"
             
             logger.info(f"Parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
             content = client.fetch_features(start_index=current_index, cql_filter=cql_filter)
