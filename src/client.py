@@ -149,21 +149,8 @@ class TKGMClient:
                 metadata['execution_time'] = time.time() - start_time
                 metadata['success'] = True
                 
-                # XML içeriğinden feature sayısını çıkarmaya çalış
-                try:
-                    import xml.etree.ElementTree as ET
-                    root = ET.fromstring(content)
-                    # WFS yanıtında feature sayısını bul
-                    features = root.findall('.//{http://www.opengis.net/gml}featureMember')
-                    metadata['feature_count'] = len(features)
-                    
-                    # Sonuç boş mu kontrol et
-                    is_empty = metadata['feature_count'] == 0
-                    
-                except Exception as xml_error:
-                    logger.warning(f"XML parse hatası: {xml_error}")
-                    metadata['feature_count'] = 0
-                    is_empty = True
+                metadata['feature_count'] = content.count('gml:featureMember')
+                is_empty = metadata['feature_count'] == 0
         
                 logger.info(f"TKGM servisinden yanıt alındı: {metadata['response_size']} bayt, {metadata['execution_time']:.2f} saniye, {metadata['feature_count']} özellik")
                 
