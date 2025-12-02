@@ -41,10 +41,16 @@ class Settings(BaseSettings):
     TKGM_USERNAME: str = Field(..., description="TKGM service username")
     TKGM_PASSWORD: str = Field(..., description="TKGM service password")
     
+    # TKGM Layer Names
+    PARSELLER: str = Field(default="TKGM:parseller", description="Parcels layer typename")
+    ILCELER: str = Field(default="TKGM:ilceler", description="Districts layer typename")
+    MAHALLELER: str = Field(default="TKGM:mahalleler", description="Neighbourhoods layer typename")
+    
     # Service Parameters
-    MAX_FEATURES: int = Field(default=1000, ge=1, le=10000, description="Max features per request")
+    MAX_FEATURES: int = Field(default=1000, alias="MAXFEATURES", ge=1, le=10000, description="Max features per request")
     MAX_RETRIES: int = Field(default=10, ge=1, le=20, description="Max retry attempts")
     RETRY_DELAY: int = Field(default=30, ge=1, le=300, description="Retry delay in seconds")
+    CUTOFF_DATE: str = Field(default="2025-10-09", description="Cutoff date for full sync")
     
     # Logging Configuration
     LOG_LEVEL: str = Field(default="INFO", description="Log level")

@@ -3,7 +3,6 @@ TKGM WFS Servis İstemci Modülü
 WFS 1.0.0 uyumlu servis ile etkileşim, kimlik doğrulama ve sayfalandırma
 """
 
-import os
 import time
 import requests
 from requests.auth import HTTPBasicAuth
@@ -11,9 +10,8 @@ from typing import Optional, Dict
 from urllib.parse import urlencode
 from datetime import datetime
 from loguru import logger
-from dotenv import load_dotenv
 
-load_dotenv()
+from .config import settings
 
 
 class TKGMClient:
@@ -25,11 +23,11 @@ class TKGMClient:
         max_features: Optional[int] = None, 
         db_manager: Optional[object] = None  # DatabaseManager type
     ) -> None:
-        self.base_url = os.getenv('TKGM_BASE_URL')
-        self.username = os.getenv('TKGM_USERNAME')
-        self.password = os.getenv('TKGM_PASSWORD')
-        self.typename = typename or os.getenv('PARSELLER', 'TKGM:parseller')
-        self.max_features = max_features or int(os.getenv('MAXFEATURES', 1000))
+        self.base_url = settings.TKGM_BASE_URL
+        self.username = settings.TKGM_USERNAME
+        self.password = settings.TKGM_PASSWORD
+        self.typename = typename or settings.PARSELLER
+        self.max_features = max_features or settings.MAX_FEATURES
         
         # DatabaseManager referansı (loglama için)
         self.db = db_manager
@@ -62,7 +60,7 @@ class TKGMClient:
                 'SERVICE': 'WFS',
                 'SRSNAME': 'EPSG:4326',
                 'VERSION': '1.1.2',
-                'TYPENAME':  os.getenv('MAHALLELER', 'TKGM:mahalleler'),
+                'TYPENAME':  settings.MAHALLELER,
                 'MAXFEATURES': '1',
                 'STARTINDEX': '0'
             }

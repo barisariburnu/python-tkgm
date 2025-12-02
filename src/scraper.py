@@ -8,7 +8,6 @@ import sys
 import signal
 from typing import Optional
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
 from loguru import logger
 
 # Modülleri import et
@@ -16,15 +15,13 @@ from src.database import DatabaseManager
 from src.telegram import TelegramNotifier
 from src.client import TKGMClient
 from src.geometry import WFSGeometryProcessor
+from src.config import settings
 
 
 class TKGMScraper:
     """TKGM veri tarayıcısı ana sınıfı"""
     
     def __init__(self):
-        # .env dosyasını yükle
-        load_dotenv()
-        
         # Loglama ayarları
         self._setup_logging()
         
@@ -46,8 +43,8 @@ class TKGMScraper:
 
     def _setup_logging(self):
         """Loglama sistemini ayarla"""
-        log_level = os.getenv('LOG_LEVEL', 'INFO')
-        log_file = os.getenv('LOG_FILE', 'logs/scraper.log')
+        log_level = settings.LOG_LEVEL
+        log_file = settings.LOG_FILE
         
         # Log dizinini oluştur
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
@@ -154,7 +151,7 @@ class TKGMScraper:
     def sync_districts(self):
         """İlçe verilerini senkronize et"""
         logger.info("İlçe verilerini senkronize etme işlemi başlatılıyor...")
-        client = TKGMClient(typename=os.getenv('İLÇELER', 'TKGM:ilceler'), db_manager=self.db)
+        client = TKGMClient(typename=settings.ILCELER, db_manager=self.db)
         content = client.fetch_features()
         
         if content is None:
@@ -186,7 +183,7 @@ class TKGMScraper:
     def sync_neighbourhoods(self):
         """Mahalle verilerini senkronize et"""
         logger.info("Mahalle verilerini senkronize etme işlemi başlatılıyor...")
-        client = TKGMClient(typename=os.getenv('MAHALLELER', 'TKGM:mahalleler'), db_manager=self.db)
+        client = TKGMClient(typename=settings.MAHALLELER, db_manager=self.db)
         content = client.fetch_features()
         
         if content is None:
@@ -219,7 +216,7 @@ class TKGMScraper:
     def sync_daily_parcels(self, start_date: Optional[datetime] = None, start_index: Optional[int] = 0):
         """Günlük parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
         logger.info("Günlük parsel verilerini senkronize etme işlemi başlatılıyor...")
-        max_features = int(os.getenv('MAX_FEATURES', 1000))
+        max_features = settings.MAX_FEATURES
         current_index = start_index
         current_date = start_date if start_date else (datetime.now() - timedelta(days=1))
         end_date = datetime.now()
@@ -234,7 +231,7 @@ class TKGMScraper:
         
         # TKGMClient örneğini oluştur
         client = TKGMClient(
-            typename=os.getenv('PARSELLER', 'TKGM:parseller'),
+            typename=settings.PARSELLER,
             max_features=max_features,
             db_manager=self.db
         )
@@ -357,15 +354,15 @@ class TKGMScraper:
     def sync_fully_parcels(self, start_index: Optional[int] = 0):
         """Tüm parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
         logger.info("Tüm parsel verilerini senkronize etme işlemi başlatılıyor...")
-        max_features = int(os.getenv('MAX_FEATURES', 1000))
-        cutoff_date = os.getenv('CUTOFF_DATE', '2025-10-09')
+        max_features = settings.MAX_FEATURES
+        cutoff_date = settings.CUTOFF_DATE
         current_index = start_index
         current_date = datetime.now()
         features_count = 0
         
         # TKGMClient örneğini oluştur
         client = TKGMClient(
-            typename=os.getenv('PARSELLER', 'TKGM:parseller'),
+            typename=settings.PARSELLER,
             max_features=max_features,
             db_manager=self.db
         )
