@@ -20,6 +20,13 @@ class WFSGeometryProcessor:
     WFS FeatureCollection yanıtlarını işlemek ve geometrileri dönüştürmek için bir sınıf.
     """
     
+    # XML namespace'leri - class-level constant (tüm instance'lar için tek bir kopya)
+    NAMESPACES = {
+        'gml': 'http://www.opengis.net/gml',
+        'wfs': 'http://www.opengis.net/wfs',
+        'TKGM': 'http://www.tkgm.gov.tr'
+    }
+    
     def __init__(self, source_crs: str = "EPSG:4326", target_crs: str = "EPSG:2320") -> None:
         """
         İşlemciyi kaynak ve hedef koordinat sistemleri ile başlatır.
@@ -31,12 +38,8 @@ class WFSGeometryProcessor:
         self.source_crs = source_crs
         self.target_crs = target_crs
         
-        # XML namespace tanımları
-        self.namespaces = {
-            'gml': 'http://www.opengis.net/gml',
-            'wfs': 'http://www.opengis.net/wfs',
-            'TKGM': 'http://www.tkgm.gov.tr'
-        }
+        # Geriye uyumluluk için instance-level referans
+        self.namespaces = self.NAMESPACES
         
         # Koordinat dönüştürücüyü başlat
         self.transformer = Transformer.from_crs(
