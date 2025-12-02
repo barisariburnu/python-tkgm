@@ -222,8 +222,7 @@ class TKGMClient:
         # Maksimum deneme sayısına ulaşıldı mı kontrol et
         if attempt >= self.max_retries:
             metadata['error_message'] = f"Maksimum deneme sayısına ({self.max_retries}) ulaşıldı"
-            logger.error(f"TKGM servis isteği başarısız: {metadata['error_message']}")
-        else:
-            logger.error(f"TKGM servis isteği başarısız: {metadata['error_message']}")
-        
+ 
+        logger.error(f"TKGM servis isteği başarısız: {metadata['error_message']}")
+
         return None
