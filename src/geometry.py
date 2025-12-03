@@ -351,9 +351,6 @@ class WFSGeometryProcessor:
                 parcel = self.process_parcel_feature(feature_member)
                 if parcel:
                     parcels.append(parcel)
-                    parsel_no = parcel.get('parselno', 'N/A')
-                    coord_sys = parcel.get('orjinalgeomkoordinatsistem', 'N/A')
-                    logger.info(f"✓ Parsel {i+1} işlendi: {parsel_no} (Koordinat Sistemi: {coord_sys})")
                 else:
                     logger.warning(f"✗ Parsel {i+1} işlenemedi")
             
