@@ -113,11 +113,10 @@ class TKGMScraper:
             
             # TKGM istemcisini başlat (DatabaseManager referansı ile)
             self.client = TKGMClient(db_manager=self.db)
-            if not self.client.test_connection():
-                raise Exception("TKGM servis bağlantısı kurulamadı")
-            
-            # GML parser'ı başlat
-            #self.parser = GMLParser()
+            # Test connection is skipped during initialization to avoid consuming daily limit
+            # Use client.test_connection() manually when needed
+            # if not self.client.test_connection():
+            #     raise Exception("TKGM servis bağlantısı kurulamadı")
             
             logger.info("Tüm bileşenler başarıyla başlatıldı")
             
@@ -151,6 +150,12 @@ class TKGMScraper:
     def sync_districts(self):
         """İlçe verilerini senkronize et"""
         logger.info("İlçe verilerini senkronize etme işlemi başlatılıyor...")
+        
+        # Check if daily limit is reached
+        if self.db.is_daily_limit_reached():
+            logger.error("⚠️  Günlük servis limiti daha önce aşılmış. Bugün için işlem yapılamaz.")
+            logger.info("Limit yarın sıfırlanacak. Manuel olarak temizlemek için: db.clear_daily_limit()")
+            return
         client = TKGMClient(typename=settings.ILCELER, db_manager=self.db)
         content = client.fetch_features()
         
@@ -183,6 +188,13 @@ class TKGMScraper:
     def sync_neighbourhoods(self):
         """Mahalle verilerini senkronize et"""
         logger.info("Mahalle verilerini senkronize etme işlemi başlatılıyor...")
+        
+        # Check if daily limit is reached
+        if self.db.is_daily_limit_reached():
+            logger.error("⚠️  Günlük servis limiti daha önce aşılmış. Bugün için işlem yapılamaz.")
+            logger.info("Limit yarın sıfırlanacak. Manuel olarak temizlemek için: db.clear_daily_limit()")
+            return
+
         client = TKGMClient(typename=settings.MAHALLELER, db_manager=self.db)
         content = client.fetch_features()
         
@@ -216,6 +228,13 @@ class TKGMScraper:
     def sync_daily_parcels(self, start_date: Optional[datetime] = None, start_index: Optional[int] = 0):
         """Günlük parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
         logger.info("Günlük parsel verilerini senkronize etme işlemi başlatılıyor...")
+        
+        # Check if daily limit is reached
+        if self.db.is_daily_limit_reached():
+            logger.error("⚠️  Günlük servis limiti daha önce aşılmış. Bugün için işlem yapılamaz.")
+            logger.info("Limit yarın sıfırlanacak. Manuel olarak temizlemek için: db.clear_daily_limit()")
+            return
+        
         max_features = settings.MAX_FEATURES
         current_index = start_index
         current_date = start_date if start_date else (datetime.now() - timedelta(days=1))
@@ -354,6 +373,13 @@ class TKGMScraper:
     def sync_fully_parcels(self, start_index: Optional[int] = 0):
         """Tüm parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
         logger.info("Tüm parsel verilerini senkronize etme işlemi başlatılıyor...")
+        
+        # Check if daily limit is reached
+        if self.db.is_daily_limit_reached():
+            logger.error("⚠️  Günlük servis limiti daha önce aşılmış. Bugün için işlem yapılamaz.")
+            logger.info("Limit yarın sıfırlanacak. Manuel olarak temizlemek için: db.clear_daily_limit()")
+            return
+        
         max_features = settings.MAX_FEATURES
         cutoff_date = settings.CUTOFF_DATE
         current_index = start_index

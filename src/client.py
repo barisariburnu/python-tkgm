@@ -181,6 +181,23 @@ class TKGMClient:
                 metadata['error_message'] = error_msg
                 metadata['http_status_code'] = e.response.status_code
                 
+                # Check for daily limit message in HTTP 500 responses
+                if e.response.status_code == 500:
+                    try:
+                        response_text = e.response.text
+                        if "günlük servis kullanım limitizi aştınız" in response_text.lower():
+                            logger.error("⚠️  GÜNLÜK LİMİT AŞILDI! Servis limiti tüketildi.")
+                            
+                            # Set daily limit flag in database
+                            if self.db:
+                                from ..database.repositories import SettingsRepository
+                                settings_repo = SettingsRepository(self.db.connection)
+                                settings_repo.set_daily_limit_reached()
+                            
+                            return None
+                    except Exception as parse_error:
+                        logger.debug(f"Limit mesajı parse edilirken hata: {parse_error}")
+                
                 # 4xx hataları için tekrar deneme yapma
                 if 400 <= e.response.status_code < 500:
                     break
