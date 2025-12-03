@@ -161,7 +161,7 @@ class SchemaManager:
                 query_date TIMESTAMP,
                 start_index INTEGER DEFAULT 0,
                 neighbourhood_id BIGINT,
-                scrape_type BOOLEAN DEFAULT FALSE,
+                scrape_type VARCHAR(50) DEFAULT 'daily_sync',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(scrape_type)

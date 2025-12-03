@@ -8,7 +8,7 @@ from datetime import datetime
 from loguru import logger
 
 # Modülleri import et
-from src.database import DatabaseManager
+from src.database import DatabaseManager, SettingsRepository
 from src.scraper import TKGMScraper
 
 
@@ -29,13 +29,13 @@ def main():
 
         if args.daily:
             db = DatabaseManager()
-            last_setting = db.get_last_setting(False)
+            last_setting = db.get_last_setting(SettingsRepository.TYPE_DAILY_SYNC)
             start_index = last_setting.get('start_index', 0)
             start_date = last_setting.get('query_date', datetime.strptime('2025-10-08', '%Y-%m-%d'))
             scraper.sync_daily_parcels(start_date=start_date, start_index=start_index)
         elif args.fully:
             db = DatabaseManager()
-            last_setting = db.get_last_setting(True)
+            last_setting = db.get_last_setting(SettingsRepository.TYPE_FULLY_SYNC)
             start_index = last_setting.get('start_index', 0)            
             scraper.sync_fully_parcels(start_index=start_index)
         elif args.neighbourhoods:

@@ -14,7 +14,9 @@ from loguru import logger
 from src.database import DatabaseManager
 from src.telegram import TelegramNotifier
 from src.client import TKGMClient
-from src.geometry import WFSGeometryProcessor
+from .database import DatabaseManager
+from .database.repositories import SettingsRepository
+from .geometry import WFSGeometryProcessor
 from src.config import settings
 
 
@@ -260,7 +262,7 @@ class TKGMScraper:
             summary_pages += 1
             
             # CQL filtre oluştur
-            cql_filter = f"(onaydurum=1 and sistemguncellemetarihi>='{current_date.isoformat()}' and sistemguncellemetarihi<'{end_date.isoformat()}' and sistemkayittarihi<'{end_date.isoformat()}')"
+            cql_filter = f"(onaydurum=1 and durum=3 and sistemguncellemetarihi>='{current_date.isoformat()}' and sistemguncellemetarihi<'{end_date.isoformat()}' and sistemkayittarihi<'{end_date.isoformat()}')"
             
             logger.info(f"Parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
             content = client.fetch_features(start_index=current_index, cql_filter=cql_filter)
@@ -331,7 +333,12 @@ class TKGMScraper:
                         current_index += max_features
 
                         # tk_settings tablosuna güncelleme yap - sadece tarih ve index
-                        self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=False)
+                        # Ayarları güncelle
+                        self.db.update_setting(
+                            query_date=current_date, 
+                            start_index=current_index, 
+                            scrape_type=SettingsRepository.TYPE_DAILY_SYNC
+                        )
                         logger.info(
                             f"Parsel sorgu ayarları güncellendi: query_date={current_date.strftime('%Y-%m-%d')}, start_index={current_index}"
                         )
@@ -354,7 +361,7 @@ class TKGMScraper:
                     current_date = current_date + timedelta(days=1)
                     current_index = 0
                     # Yeni tarihe geçerken ayarları güncelle
-                    self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=False)
+                    self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_DAILY_SYNC)
                     continue
                 
             except Exception as e:
@@ -363,7 +370,7 @@ class TKGMScraper:
                 break
         
         # İşlem tamamlandığında final güncelleme
-        self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=False)
+        self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_DAILY_SYNC)
         
         if not self.running:
             logger.info("İşlem kullanıcı tarafından durduruldu")
@@ -442,7 +449,7 @@ class TKGMScraper:
                         current_index += max_features
                         
                         # tk_settings tablosuna güncelleme yap - sadece tarih ve index
-                        self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=True)
+                        self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_FULLY_SYNC)
                         logger.info(f"Parsel sorgu ayarları güncellendi: query_date={current_date.strftime('%Y-%m-%d')}, start_index={current_index}")
 
                         # Eğer çekilen parsel sayısı 1000'den azsa, tüm veriler çekilmiş demektir
@@ -457,7 +464,7 @@ class TKGMScraper:
                     logger.info(f"Index {current_index} - {current_index + max_features} arasında kaydedilecek parsel verisi bulunamadı")
                     self.running = False
                     # Yeni tarihe geçerken ayarları güncelle
-                    self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=True)
+                    self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_FULLY_SYNC)
                     continue
                 
             except Exception as e:
@@ -465,7 +472,7 @@ class TKGMScraper:
                 break
         
         # İşlem tamamlandığında final güncelleme
-        self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=True)
+        self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_FULLY_SYNC)
         
         if not self.running:
             logger.info("İşlem kullanıcı tarafından durduruldu")

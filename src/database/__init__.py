@@ -81,11 +81,26 @@ class DatabaseManager:
         return self.neighbourhood_repo.get_neighbourhoods()
     
     # Settings methods
-    def get_last_setting(self, scrape_type=False):
+    def get_last_setting(self, scrape_type=None):
+        if scrape_type is None:
+            scrape_type = SettingsRepository.TYPE_DAILY_SYNC
         return self.settings_repo.get_last_setting(scrape_type)
     
     def update_setting(self, **kwargs):
         return self.settings_repo.update_setting(**kwargs)
+    
+    # Daily limit methods
+    def is_daily_limit_reached(self):
+        """Check if daily API limit has been reached"""
+        return self.settings_repo.is_daily_limit_reached()
+    
+    def set_daily_limit_reached(self):
+        """Set the daily limit flag"""
+        return self.settings_repo.set_daily_limit_reached()
+    
+    def clear_daily_limit(self):
+        """Clear the daily limit flag (manual override)"""
+        return self.settings_repo.clear_daily_limit()
     
     # Statistics methods
     def get_statistics(self):
@@ -102,3 +117,4 @@ class DatabaseManager:
             error_message, http_status_code, response_xml, response_size,
             execution_duration, notes
         )
+

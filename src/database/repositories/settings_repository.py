@@ -12,10 +12,12 @@ from .base_repository import BaseRepository
 class SettingsRepository(BaseRepository):
     """Ayarlar repository"""
     
-    # Daily limit flag key
-    DAILY_LIMIT_KEY = "daily_limit_reached"
+    # Scrape Types
+    TYPE_DAILY_SYNC = "daily_sync"
+    TYPE_FULLY_SYNC = "fully_sync"
+    TYPE_DAILY_LIMIT_REACHED = "daily_limit_reached"
     
-    def get_last_setting(self, scrape_type: bool = False) -> Optional[Dict[str, Any]]:
+    def get_last_setting(self, scrape_type: str = TYPE_DAILY_SYNC) -> Optional[Dict[str, Any]]:
         """tk_settings tablosundan son kaydı getir"""
         conn = None
         try:
@@ -120,10 +122,10 @@ class SettingsRepository(BaseRepository):
             conn = self.db.get_connection()
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT query_date 
+                    SELECT query_date
                     FROM tk_settings 
                     WHERE scrape_type = %s
-                """, (self.DAILY_LIMIT_KEY,))
+                """, (self.TYPE_DAILY_LIMIT_REACHED,))
                 
                 result = cursor.fetchone()
                 
@@ -162,7 +164,7 @@ class SettingsRepository(BaseRepository):
         try:
             today = datetime.now()
             result = self.update_setting(
-                scrape_type=self.DAILY_LIMIT_KEY,
+                scrape_type=self.TYPE_DAILY_LIMIT_REACHED,
                 query_date=today,
                 start_index=0
             )
@@ -190,7 +192,7 @@ class SettingsRepository(BaseRepository):
                 cursor.execute("""
                     DELETE FROM tk_settings 
                     WHERE scrape_type = %s
-                """, (self.DAILY_LIMIT_KEY,))
+                """, (self.TYPE_DAILY_LIMIT_REACHED,))
                 
                 conn.commit()
                 logger.info("Günlük limit flag'i temizlendi")
