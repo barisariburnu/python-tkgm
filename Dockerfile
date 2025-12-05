@@ -135,33 +135,29 @@ COPY requirements.txt /app/requirements.txt
 RUN uv pip install --system -r requirements.txt \
     && python3 -c "from osgeo import gdal; print(gdal.__version__)" || (echo "GDAL Python binding missing" && exit 1)
 
-# Scripts kopyala
-COPY scripts/sync-oracle.sh /app/scripts/sync-oracle.sh
-COPY scripts/sync-postgresql.sh /app/scripts/sync-postgresql.sh
-COPY scripts/crontab /app/scripts/crontab
-RUN chmod +x /app/scripts/sync-oracle.sh /app/scripts/sync-postgresql.sh
-RUN sed -i 's/\r$//' /app/scripts/sync-oracle.sh
-RUN sed -i 's/\r$//' /app/scripts/sync-postgresql.sh
+# Uygulama dosyalarını kopyala (önce tüm dosyalar)
+COPY . /app/
 
-# Entrypoint script'ini kopyala ve çalıştırılabilir yap
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-RUN sed -i 's/\r$//' /entrypoint.sh
+# Script'lerin CRLF satır sonlarını düzelt ve çalıştırılabilir yap
+RUN sed -i 's/\r$//' /app/scripts/sync-oracle.sh \
+    && sed -i 's/\r$//' /app/scripts/sync-postgresql.sh \
+    && sed -i 's/\r$//' /app/entrypoint.sh \
+    && chmod +x /app/scripts/sync-oracle.sh /app/scripts/sync-postgresql.sh /app/entrypoint.sh
+
+# Entrypoint'i root'a kopyala
+RUN cp /app/entrypoint.sh /entrypoint.sh && chmod +x /entrypoint.sh
 
 # Cron job'ları ayarla - crontab dosyasını kullan
-COPY scripts/crontab /etc/cron.d/tkgm
-RUN sed -i 's/\r$//' /etc/cron.d/tkgm && \
-    chmod 0644 /etc/cron.d/tkgm && \
-    crontab /etc/cron.d/tkgm
+RUN sed -i 's/\r$//' /app/scripts/crontab \
+    && cp /app/scripts/crontab /etc/cron.d/tkgm \
+    && chmod 0644 /etc/cron.d/tkgm \
+    && crontab /etc/cron.d/tkgm
 
 # Log dizinini oluştur
 RUN mkdir -p /app/logs
 
 # Environment değişkenlerini cron için hazırla
 RUN printenv | grep -v "no_proxy" >> /etc/environment
-
-# Uygulama dosyalarını kopyala
-COPY . /app/
 
 # Sürümleri ve sürücüleri test et
 RUN ogrinfo --formats | grep -i oci || echo "Warning: OCI driver not found" \
