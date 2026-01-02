@@ -258,11 +258,20 @@ class TKGMScraper:
         )
         
         while current_date < end_date and self.running:
+            # Sadece mevcut günü sorgula (current_date ile bir sonraki günün başlangıcı arası)
+            next_day = current_date + timedelta(days=1)
+            # Eğer next_day end_date'i aşıyorsa, end_date'e kadar kısıtla
+            query_end = next_day if next_day < end_date else end_date
+            
             logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında işleniyor")
             summary_pages += 1
             
-            # CQL filtre oluştur
-            cql_filter = f"(onaydurum=1 and durum=3 and sistemguncellemetarihi>='{current_date.isoformat()}' and sistemguncellemetarihi<'{end_date.isoformat()}' and sistemkayittarihi<'{end_date.isoformat()}')"
+            # CQL filtre oluştur - Sadece o güne ait guncelleme ve kayıtlar
+            cql_filter = (
+                f"(onaydurum=1 and durum=3 and "
+                f"sistemguncellemetarihi>='{current_date.isoformat()}' and "
+                f"sistemguncellemetarihi<'{query_end.isoformat()}')"
+            )
             
             logger.info(f"Parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
             content = client.fetch_features(start_index=current_index, cql_filter=cql_filter)
@@ -279,28 +288,20 @@ class TKGMScraper:
             try:
                 # XML'i parse et
                 feature_members = processor.parse_wfs_xml(content)
-                logger.info(f"Toplam {len(feature_members)} parsel bulundu")
+                logger.info(f"Bu sayfada {len(feature_members)} parsel bulundu")
                 
                 if len(feature_members) == 0:
-                    logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında feature member bulunamadı, bir sonraki sayfaya geçiliyor")
+                    logger.info(f"[{current_date.isoformat()}] Bu gün için başka veri kalmadı, bir sonraki güne geçiliyor")
                     summary_empty_pages += 1
-                    current_date = current_date + timedelta(days=1)
+                    current_date = next_day
                     current_index = 0
+                    # Yeni güne geçişi kaydet
+                    self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_DAILY_SYNC)
                     continue
                 
-                # Process each feature member
+                # Geometrileri işle
                 all_features = processor.process_parcel_wfs_response(content)
-
-                logger.info(f"Toplam {len(all_features)} geometri başarıyla işlendi")
-                
-                if not all_features:
-                    logger.info(f"[{current_date}] Index {current_index} - {current_index + max_features} arasında parsel verisi bulunamadı")
-                    current_date = current_date + timedelta(days=1)
-                    current_index = 0
-                    continue
-                
                 features_count = len(all_features)
-                logger.info(f"[{current_date}] Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel özelliği çekildi")
                 summary_found += features_count
                 
                 # Veritabanına kaydet ve raporla
@@ -327,45 +328,40 @@ class TKGMScraper:
                                 )
                                 self.notifier.send_message(pull_msg)
                             except Exception as e:
-                                logger.error(f"Servis çekim raporu gönderilemedi: {e}")
+                                logger.error(f"Telegram rapor hatası: {e}")
 
                         # Sonraki sayfa için start_index'i artır
                         current_index += max_features
 
-                        # tk_settings tablosuna güncelleme yap - sadece tarih ve index
-                        # Ayarları güncelle
+                        # Eğer bu sayfada gelen veri max_features'tan azsa, bu gün bitmiş demektir
+                        if features_count < max_features:
+                            logger.info(f"[{current_date.isoformat()}] Gün tamamlandı. Toplam {summary_found} parsel çekildi.")
+                            current_date = next_day
+                            current_index = 0
+
+                        # Durumu veritabanına kaydet (Her sayfada veya gün geçişinde)
                         self.db.update_setting(
                             query_date=current_date, 
                             start_index=current_index, 
                             scrape_type=SettingsRepository.TYPE_DAILY_SYNC
                         )
                         logger.info(
-                            f"Parsel sorgu ayarları güncellendi: query_date={current_date.strftime('%Y-%m-%d')}, start_index={current_index}"
+                            f"Parsel sorgu ayarları güncellendi: query_date={current_date.isoformat()}, start_index={current_index}"
                         )
 
-                        # Eğer çekilen parsel sayısı 1000'den azsa, tüm veriler çekilmiş demektir
-                        if features_count < max_features:
-                            logger.info(
-                                f"[{current_date.isoformat()}] Index {current_index - max_features} - {current_index} arasında toplam "
-                                f"{features_count} parsel çekildi. Tüm veriler çekildi."
-                            )
-                            current_date = current_date + timedelta(days=1)
-                            current_index = 0
-
                     except Exception as e:
-                        logger.error(f"Veritabanına kaydetme hatası: {e}")
+                        logger.error(f"Veritabanı kayıt hatası: {e}")
                         summary_errors += 1
                         break
                 else:
-                    logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında kaydedilecek parsel verisi bulunamadı")
-                    current_date = current_date + timedelta(days=1)
+                    logger.info(f"[{current_date.isoformat()}] Kaydedilecek veri bulunamadı, sonraki gün...")
+                    current_date = next_day
                     current_index = 0
-                    # Yeni tarihe geçerken ayarları güncelle
                     self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_DAILY_SYNC)
                     continue
                 
             except Exception as e:
-                logger.error(f"Parsel verilerini işlerken hata: {e}")
+                logger.error(f"Parsel işleme hatası: {e}")
                 summary_errors += 1
                 break
         
