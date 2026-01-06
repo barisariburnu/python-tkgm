@@ -17,6 +17,11 @@ class LogRepository(BaseRepository):
                    execution_duration: float = None, notes: str = None) -> bool:
         """TKGM servis sorgusunu tk_logs tablosuna kaydet"""
         try:
+            # execution_duration float (saniye) ise PostgreSQL INTERVAL tipine çevir
+            duration_interval = None
+            if execution_duration is not None:
+                duration_interval = f'{execution_duration} seconds'
+
             with self.db.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
@@ -25,7 +30,7 @@ class LogRepository(BaseRepository):
                             error_message, http_status_code, response_xml, response_size,
                             execution_duration, notes, query_time
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::interval, %s, CURRENT_TIMESTAMP
                         )
                     """, (
                         typename,
@@ -37,7 +42,7 @@ class LogRepository(BaseRepository):
                         http_status_code,
                         response_xml,
                         response_size,
-                        execution_duration,
+                        duration_interval,
                         notes
                     ))
                     
