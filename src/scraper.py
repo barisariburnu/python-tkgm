@@ -325,6 +325,7 @@ class TKGMScraper:
                                     found=features_count,
                                     saved=saved_count,
                                     unsaved=unsaved_count,
+                                    status="Aktif"
                                 )
                                 self.notifier.send_message(pull_msg)
                             except Exception as e:
@@ -471,6 +472,7 @@ class TKGMScraper:
                                     found=features_count,
                                     saved=saved_count,
                                     unsaved=unsaved_count,
+                                    status="Pasif"
                                 )
                                 self.notifier.send_message(pull_msg)
                             except Exception as e:

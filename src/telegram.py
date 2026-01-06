@@ -146,6 +146,7 @@ class TelegramNotifier:
         found: int,
         saved: int,
         unsaved: int,
+        status: str = "Aktif",
     ) -> str:
         """Tek servis çekimi sonrası kayıt raporu mesajını üretir"""
         lines = [
@@ -155,5 +156,6 @@ class TelegramNotifier:
             f"• Bulunan Parsel: {found:,}",
             f"• Kaydedilen Parsel: {saved:,}",
             f"• Kaydedilemeyen Parsel: {unsaved:,}",
+            f"• Parsel Durum: {status}",
         ]
         return "\n".join(lines)
