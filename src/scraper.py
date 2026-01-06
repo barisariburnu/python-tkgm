@@ -373,6 +373,152 @@ class TKGMScraper:
         else:
             logger.info(f"Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel çekildi. Tüm veriler çekildi. Son işlenen tarih: {current_date.strftime('%Y-%m-%d')}")
 
+    def sync_daily_inactive_parcels(self, start_date: Optional[datetime] = None, start_index: Optional[int] = 0):
+        """Günlük pasif parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
+        logger.info("Günlük pasif parsel verilerini senkronize etme işlemi başlatılıyor...")
+
+        # Check if daily limit is reached
+        if self.db.is_daily_limit_reached():
+            logger.error("⚠️  Günlük servis limiti daha önce aşılmış. Bugün için işlem yapılamaz.")
+            logger.info("Limit yarın sıfırlanacak. Manuel olarak temizlemek için: db.clear_daily_limit()")
+            return
+
+        max_features = settings.MAX_FEATURES
+        current_index = start_index
+        current_date = start_date if start_date else (datetime.now() - timedelta(days=1))
+        end_date = datetime.now()
+
+        # Özet metrikleri
+        summary_found = 0
+        summary_saved = 0
+        summary_pages = 0
+        summary_empty_pages = 0
+        summary_errors = 0
+        features_count = 0
+
+        # TKGMClient örneğini oluştur
+        client = TKGMClient(
+            typename=settings.PARSELLER,
+            max_features=max_features,
+            db_manager=self.db
+        )
+
+        while current_date < end_date and self.running:
+            # Sadece mevcut günü sorgula (current_date ile bir sonraki günün başlangıcı arası)
+            next_day = current_date + timedelta(days=1)
+            # Eğer next_day end_date'i aşıyorsa, end_date'e kadar kısıtla
+            query_end = next_day if next_day < end_date else end_date
+
+            logger.info(f"[{current_date.isoformat()}] Index {current_index} - {current_index + max_features} arasında işleniyor")
+            summary_pages += 1
+
+            # CQL filtre oluştur - Pasif kayıtlar (onaydurum=1 and durum=2)
+            cql_filter = (
+                f"(onaydurum=1 and durum=2 and "
+                f"sistemguncellemetarihi>='{current_date.isoformat()}' and "
+                f"sistemguncellemetarihi<'{query_end.isoformat()}')"
+            )
+
+            logger.info(f"Pasif parsel verilerini çekmek için kullanılan CQL filtre: {cql_filter}")
+            content = client.fetch_features(start_index=current_index, cql_filter=cql_filter)
+
+            if content is None:
+                logger.error("TKGM servisinden pasif parsel verisi alınamadı")
+                summary_errors += 1
+                break
+
+            processor = WFSGeometryProcessor()
+            if not self.running:
+                break
+
+            try:
+                # XML'i parse et
+                feature_members = processor.parse_wfs_xml(content)
+                logger.info(f"Bu sayfada {len(feature_members)} pasif parsel bulundu")
+
+                if len(feature_members) == 0:
+                    logger.info(f"[{current_date.isoformat()}] Bu gün için başka pasif veri kalmadı, bir sonraki güne geçiliyor")
+                    summary_empty_pages += 1
+                    current_date = next_day
+                    current_index = 0
+                    # Yeni güne geçişi kaydet
+                    self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_DAILY_INACTIVE_SYNC)
+                    continue
+
+                # Geometrileri işle
+                all_features = processor.process_parcel_wfs_response(content)
+                features_count = len(all_features)
+                summary_found += features_count
+
+                # Veritabanına kaydet ve raporla
+                if all_features:
+                    try:
+                        saved_count = self.db.insert_parcels(all_features)
+                        unsaved_count = max(0, features_count - saved_count)
+                        logger.info(
+                            f"[{current_date}] Index {current_index} - {current_index + max_features} arasında "
+                            f"{saved_count} pasif parsel veritabanına kaydedildi, {unsaved_count} kaydedilemedi"
+                        )
+                        summary_saved += saved_count
+
+                        # Başarılı çekim sonrası raporu Telegram'a gönder
+                        if self.notifier.is_configured():
+                            try:
+                                pull_msg = self.notifier.format_pull_report(
+                                    date=current_date,
+                                    start_index=current_index,
+                                    end_index=current_index + max_features,
+                                    found=features_count,
+                                    saved=saved_count,
+                                    unsaved=unsaved_count,
+                                )
+                                self.notifier.send_message(pull_msg)
+                            except Exception as e:
+                                logger.error(f"Telegram rapor hatası: {e}")
+
+                        # Sonraki sayfa için start_index'i artır
+                        current_index += max_features
+
+                        # Eğer bu sayfada gelen veri max_features'tan azsa, bu gün bitmiş demektir
+                        if features_count < max_features:
+                            logger.info(f"[{current_date.isoformat()}] Gün tamamlandı. Toplam {summary_found} pasif parsel çekildi.")
+                            current_date = next_day
+                            current_index = 0
+
+                        # Durumu veritabanına kaydet (Her sayfada veya gün geçişinde)
+                        self.db.update_setting(
+                            query_date=current_date,
+                            start_index=current_index,
+                            scrape_type=SettingsRepository.TYPE_DAILY_INACTIVE_SYNC
+                        )
+                        logger.info(
+                            f"Pasif parsel sorgu ayarları güncellendi: query_date={current_date.isoformat()}, start_index={current_index}"
+                        )
+
+                    except Exception as e:
+                        logger.error(f"Veritabanı kayıt hatası: {e}")
+                        summary_errors += 1
+                        break
+                else:
+                    logger.info(f"[{current_date.isoformat()}] Kaydedilecek pasif veri bulunamadı, sonraki gün...")
+                    current_date = next_day
+                    current_index = 0
+                    self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_DAILY_INACTIVE_SYNC)
+                    continue
+
+            except Exception as e:
+                logger.error(f"Pasif parsel işleme hatası: {e}")
+                summary_errors += 1
+                break
+
+        # İşlem tamamlandığında final güncelleme
+        self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_DAILY_INACTIVE_SYNC)
+
+        if not self.running:
+            logger.info("İşlem kullanıcı tarafından durduruldu")
+        else:
+            logger.info(f"Index {current_index} - {current_index + max_features} arasında toplam {features_count} pasif parsel çekildi. Tüm veriler çekildi. Son işlenen tarih: {current_date.strftime('%Y-%m-%d')}")
+
     def sync_fully_parcels(self, start_index: Optional[int] = 0):
         """Tüm parsel verilerini senkronize et - sayfalama ve tarih kontrolü ile"""
         logger.info("Tüm parsel verilerini senkronize etme işlemi başlatılıyor...")

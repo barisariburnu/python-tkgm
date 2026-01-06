@@ -19,6 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description='TKGM WFS Veri Çekme Uygulaması')
     parser.add_argument('--fully', action='store_true', help='Tüm parsel verilerini senkronize et')
     parser.add_argument('--daily', action='store_true', help='Günlük parsel verilerini senkronize et')
+    parser.add_argument('--daily-inactive', action='store_true', help='Günlük pasif parsel verilerini senkronize et')
     parser.add_argument('--neighbourhoods', action='store_true', help='Mahalle verilerini senkronize et')
     parser.add_argument('--districts', action='store_true', help='İlçe verilerini senkronize et')
     parser.add_argument('--stats', action='store_true', help='İstatistik verilerini göster')
@@ -33,6 +34,12 @@ def main():
             start_index = last_setting.get('start_index', 0)
             start_date = last_setting.get('query_date', datetime.strptime('2025-10-08', '%Y-%m-%d'))
             scraper.sync_daily_parcels(start_date=start_date, start_index=start_index)
+        elif args.daily_inactive:
+            db = DatabaseManager()
+            last_setting = db.get_last_setting(SettingsRepository.TYPE_DAILY_INACTIVE_SYNC)
+            start_index = last_setting.get('start_index', 0)
+            start_date = last_setting.get('query_date', datetime.strptime('2021-01-01', '%Y-%m-%d'))
+            scraper.sync_daily_inactive_parcels(start_date=start_date, start_index=start_index)
         elif args.fully:
             db = DatabaseManager()
             last_setting = db.get_last_setting(SettingsRepository.TYPE_FULLY_SYNC)

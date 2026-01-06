@@ -15,6 +15,7 @@ class SettingsRepository(BaseRepository):
     # Scrape Types
     TYPE_DAILY_SYNC = "daily_sync"
     TYPE_FULLY_SYNC = "fully_sync"
+    TYPE_DAILY_INACTIVE_SYNC = "daily_inactive_sync"
     TYPE_DAILY_LIMIT_REACHED = "daily_limit_reached"
     
     def get_last_setting(self, scrape_type: str = TYPE_DAILY_SYNC) -> Optional[Dict[str, Any]]:
