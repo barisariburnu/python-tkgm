@@ -1,10 +1,10 @@
 # TKGM Veritabanı Senkronizasyon Görevleri
 
 # TKGM Servis İstekleri - Her saat başında aktif veri çekme
-0 * * * * cd /app && /usr/bin/python3 /app/main.py --daily >> /app/logs/app.log 2>&1
+0 * * * * cd /app && /usr/bin/python3 /app/main.py --daily >> /app/logs/app-daily-active.log 2>&1
 
 # TKGM Servis İstekleri - Her saatin 30. dakikasında pasif veri çekme
-30 * * * * cd /app && /usr/bin/python3 /app/main.py --daily-inactive >> /app/logs/app.log 2>&1
+10 * * * * cd /app && /usr/bin/python3 /app/main.py --daily-inactive >> /app/logs/app-daily-inactive.log 2>&1
 
 # Oracle senkronizasyonu - Her gün 20:00'de
 0 20 * * * /app/scripts/sync-oracle.sh 2>&1
