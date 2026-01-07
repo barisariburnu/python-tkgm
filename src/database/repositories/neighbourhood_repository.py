@@ -124,7 +124,7 @@ class NeighbourhoodRepository(BaseRepository):
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                self.db.return_connection(conn)
 
         return saved_count
     
