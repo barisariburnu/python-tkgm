@@ -286,11 +286,11 @@ class TKGMScraper:
                 break
             
             try:
-                # XML'i parse et
-                feature_members = processor.parse_wfs_xml(content)
-                logger.info(f"Bu sayfada {len(feature_members)} parsel bulundu")
-                
-                if len(feature_members) == 0:
+                # Geometrileri işle
+                all_features = processor.process_parcel_wfs_response(content)
+                logger.info(f"Bu sayfada {len(all_features)} parsel bulundu")
+
+                if len(all_features) == 0:
                     logger.info(f"[{current_date.isoformat()}] Bu gün için başka veri kalmadı, bir sonraki güne geçiliyor")
                     summary_empty_pages += 1
                     current_date = next_day
@@ -298,9 +298,6 @@ class TKGMScraper:
                     # Yeni güne geçişi kaydet
                     self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_DAILY_SYNC)
                     continue
-                
-                # Geometrileri işle
-                all_features = processor.process_parcel_wfs_response(content)
                 features_count = len(all_features)
                 summary_found += features_count
                 
@@ -433,11 +430,11 @@ class TKGMScraper:
                 break
 
             try:
-                # XML'i parse et
-                feature_members = processor.parse_wfs_xml(content)
-                logger.info(f"Bu sayfada {len(feature_members)} pasif parsel bulundu")
+                # Geometrileri işle
+                all_features = processor.process_parcel_wfs_response(content)
+                logger.info(f"Bu sayfada {len(all_features)} pasif parsel bulundu")
 
-                if len(feature_members) == 0:
+                if len(all_features) == 0:
                     logger.info(f"[{current_date.isoformat()}] Bu gün için başka pasif veri kalmadı, bir sonraki güne geçiliyor")
                     summary_empty_pages += 1
                     current_date = next_day
@@ -445,9 +442,6 @@ class TKGMScraper:
                     # Yeni güne geçişi kaydet
                     self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_DAILY_INACTIVE_SYNC)
                     continue
-
-                # Geometrileri işle
-                all_features = processor.process_parcel_wfs_response(content)
                 features_count = len(all_features)
                 summary_found += features_count
 
@@ -561,56 +555,37 @@ class TKGMScraper:
                 break
             
             try:
-                # XML'i parse et
-                feature_members = processor.parse_wfs_xml(content)
-                logger.info(f"Toplam {len(feature_members)} parsel bulundu")
-                
-                if len(feature_members) == 0:
+                # Geometrileri işle
+                all_features = processor.process_parcel_wfs_response(content)
+                logger.info(f"Toplam {len(all_features)} parsel bulundu")
+
+                if len(all_features) == 0:
                     logger.info(f"Index {current_index} - {current_index + max_features} arasında feature member bulunamadı, bir sonraki sayfaya geçiliyor")
                     self.running = False
                     continue
-                
-                # Process each feature member
-                all_features = processor.process_parcel_wfs_response(content)
-                
-                logger.info(f"Toplam {len(all_features)} geometri başarıyla işlendi")
-                    
-                if not all_features:
-                    logger.info("Bu sayfada parsel verisi bulunamadı")
-                    break
-                
-                features_count = len(all_features)
-                logger.info(f"Toplam {features_count} parsel özelliği çekildi")
-                
-                # Veritabanına kaydet
-                if all_features:
-                    try:
-                        saved_count = self.db.insert_parcels(all_features)
-                        unsaved_count = max(0, features_count - saved_count)
-                        logger.info(f"{saved_count} parsel veritabanına kaydedildi, {unsaved_count} kaydedilemedi")
-                        
-                        # Sonraki sayfa için start_index'i artır
-                        current_index += max_features
-                        
-                        # tk_settings tablosuna güncelleme yap - sadece tarih ve index
-                        self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_FULLY_SYNC)
-                        logger.info(f"Parsel sorgu ayarları güncellendi: query_date={current_date.strftime('%Y-%m-%d')}, start_index={current_index}")
 
-                        # Eğer çekilen parsel sayısı 1000'den azsa, tüm veriler çekilmiş demektir
-                        if features_count < max_features:
-                            logger.info(f"Index {current_index} - {current_index + max_features} arasında toplam {features_count} parsel çekildi. Tüm veriler çekildi.")
-                            self.running = False
-                    
-                    except Exception as e:
-                        logger.error(f"Veritabanına kaydetme hatası: {e}")
-                        break
-                else:
-                    logger.info(f"Index {current_index} - {current_index + max_features} arasında kaydedilecek parsel verisi bulunamadı")
-                    self.running = False
-                    # Yeni tarihe geçerken ayarları güncelle
+                # Veritabanına kaydet
+                try:
+                    saved_count = self.db.insert_parcels(all_features)
+                    unsaved_count = max(0, len(all_features) - saved_count)
+                    logger.info(f"{saved_count} parsel veritabanına kaydedildi, {unsaved_count} kaydedilemedi")
+
+                    # Sonraki sayfa için start_index'i artır
+                    current_index += max_features
+
+                    # tk_settings tablosuna güncelleme yap - sadece tarih ve index
                     self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_FULLY_SYNC)
-                    continue
-                
+                    logger.info(f"Parsel sorgu ayarları güncellendi: query_date={current_date.strftime('%Y-%m-%d')}, start_index={current_index}")
+
+                    # Eğer çekilen parsel sayısı 1000'den azsa, tüm veriler çekilmiş demektir
+                    if len(all_features) < max_features:
+                        logger.info(f"Index {current_index} - {current_index + max_features} arasında toplam {len(all_features)} parsel çekildi. Tüm veriler çekildi.")
+                        self.running = False
+
+                except Exception as e:
+                    logger.error(f"Veritabanına kaydetme hatası: {e}")
+                    break
+
             except Exception as e:
                 logger.error(f"Parsel verilerini işlerken hata: {e}")
                 break
