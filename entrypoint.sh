@@ -1,26 +1,11 @@
 #!/bin/bash
 
-# Cron servisini başlat
-echo "Starting cron service..."
+# Log dizinini oluştur
+mkdir -p /app/logs
 
-# Cron servisini başlat
-service cron start
+echo "Starting TKGM Scheduler Service..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] TKGM Container started (Scheduler Mode)"
 
-# Cron konfigürasyonunu yükle
-crontab /etc/cron.d/tkgm
-
-# Log dosyasını oluştur
-touch /app/logs/app.log
-
-# Başlangıç bilgisini logla
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] TKGM Container started" >> /app/logs/app.log
-
-# Servis durumunu kontrol et
-echo "Cron service status:"
-service cron status
-
-echo "Cron jobs:"
-crontab -l
-
-# Log dosyasını takip et (container'ı çalışır durumda tutar)
-tail -f /app/logs/app.log
+# Scheduler'ı başlat
+# exec kullanarak python process'ini ana process yapıyoruz (PID 1)
+exec python3 /app/run_scheduler.py
