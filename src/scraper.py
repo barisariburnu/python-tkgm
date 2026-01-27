@@ -246,7 +246,6 @@ class TKGMScraper:
         summary_found = 0
         summary_saved = 0
         summary_pages = 0
-        summary_empty_pages = 0
         summary_errors = 0
         features_count = 0
         
@@ -292,12 +291,12 @@ class TKGMScraper:
 
                 if len(all_features) == 0:
                     logger.info(f"[{current_date.isoformat()}] Bu gün için başka veri kalmadı, bir sonraki güne geçiliyor")
-                    summary_empty_pages += 1
                     current_date = next_day
                     current_index = 0
                     # Yeni güne geçişi kaydet
                     self.db.update_setting(query_date=current_date, start_index=current_index, scrape_type=SettingsRepository.TYPE_DAILY_SYNC)
                     continue
+
                 features_count = len(all_features)
                 summary_found += features_count
                 
@@ -390,7 +389,6 @@ class TKGMScraper:
         summary_found = 0
         summary_saved = 0
         summary_pages = 0
-        summary_empty_pages = 0
         summary_errors = 0
         features_count = 0
 
@@ -436,7 +434,6 @@ class TKGMScraper:
 
                 if len(all_features) == 0:
                     logger.info(f"[{current_date.isoformat()}] Bu gün için başka pasif veri kalmadı, bir sonraki güne geçiliyor")
-                    summary_empty_pages += 1
                     current_date = next_day
                     current_index = 0
                     # Yeni güne geçişi kaydet

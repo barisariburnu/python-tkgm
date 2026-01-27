@@ -58,13 +58,13 @@ def dispatch_sync_job():
             
         today = date.today()
         
-        # User Logic: query_date bugünkü tarihten BÜYÜK ise aktif kayıtlar bitmiş demektir.
+        # User Logic: query_date bugünkü tarihten BÜYÜK ve EŞİT ise aktif kayıtlar bitmiş demektir.
         # Bu durumda Pasif (Inactive) senkronizasyona geçilebilir.
-        if query_date > today:
-            logger.info(f"Active Sync Finished (Query Date: {query_date} > Today: {today}). Dispatching Inactive Sync.")
+        if query_date >= today:
+            logger.info(f"Active Sync Finished (Query Date: {query_date} >= Today: {today}). Dispatching Inactive Sync.")
             daily_inactive_job()
         else:
-            logger.info(f"Active Sync Ongoing (Query Date: {query_date} <= Today: {today}). Dispatching Active Sync.")
+            logger.info(f"Active Sync Ongoing (Query Date: {query_date} < Today: {today}). Dispatching Active Sync.")
             daily_active_job()
             
     except Exception as e:
