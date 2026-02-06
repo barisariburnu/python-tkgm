@@ -156,6 +156,11 @@ class ParcelRepository(BaseRepository):
                             hesapverikalite = EXCLUDED.hesapverikalite,
                             updated_at = CURRENT_TIMESTAMP,
                             geom = EXCLUDED.geom
+                        WHERE
+                            -- Sadece gelen kayıt daha güncel ise güncelle
+                            -- Mevcut kayıtta sistemkayittarihi NULL ise güncelle
+                            tk_parsel.sistemkayittarihi IS NULL
+                            OR EXCLUDED.sistemkayittarihi > tk_parsel.sistemkayittarihi
                         """, (
                             feature.get('fid'), feature.get('parselno'), feature.get('adano'),
                             feature.get('tapukimlikno'), feature.get('tapucinsaciklama'),
