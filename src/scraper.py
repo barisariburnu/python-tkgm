@@ -278,6 +278,12 @@ class TKGMScraper:
             if content is None:
                 logger.error("TKGM servisinden parsel verisi alınamadı")
                 summary_errors += 1
+                # Hata durumunda mevcut ilerlemeyi kaydet (aynı güne takılmayı önle)
+                self.db.update_setting(
+                    query_date=current_date, 
+                    start_index=current_index, 
+                    scrape_type=SettingsRepository.TYPE_DAILY_SYNC
+                )
                 break
             
             processor = WFSGeometryProcessor()
@@ -349,6 +355,12 @@ class TKGMScraper:
                     except Exception as e:
                         logger.error(f"Veritabanı kayıt hatası: {e}")
                         summary_errors += 1
+                        # Hata durumunda mevcut ilerlemeyi kaydet
+                        self.db.update_setting(
+                            query_date=current_date, 
+                            start_index=current_index, 
+                            scrape_type=SettingsRepository.TYPE_DAILY_SYNC
+                        )
                         break
                 else:
                     logger.info(f"[{current_date.isoformat()}] Kaydedilecek veri bulunamadı, sonraki gün...")
@@ -360,6 +372,12 @@ class TKGMScraper:
             except Exception as e:
                 logger.error(f"Parsel işleme hatası: {e}")
                 summary_errors += 1
+                # Hata durumunda mevcut ilerlemeyi kaydet
+                self.db.update_setting(
+                    query_date=current_date, 
+                    start_index=current_index, 
+                    scrape_type=SettingsRepository.TYPE_DAILY_SYNC
+                )
                 break
         
         # İşlem tamamlandığında final güncelleme
@@ -421,6 +439,12 @@ class TKGMScraper:
             if content is None:
                 logger.error("TKGM servisinden pasif parsel verisi alınamadı")
                 summary_errors += 1
+                # Hata durumunda mevcut ilerlemeyi kaydet (aynı güne takılmayı önle)
+                self.db.update_setting(
+                    query_date=current_date, 
+                    start_index=current_index, 
+                    scrape_type=SettingsRepository.TYPE_DAILY_INACTIVE_SYNC
+                )
                 break
 
             processor = WFSGeometryProcessor()
@@ -491,6 +515,12 @@ class TKGMScraper:
                     except Exception as e:
                         logger.error(f"Veritabanı kayıt hatası: {e}")
                         summary_errors += 1
+                        # Hata durumunda mevcut ilerlemeyi kaydet
+                        self.db.update_setting(
+                            query_date=current_date, 
+                            start_index=current_index, 
+                            scrape_type=SettingsRepository.TYPE_DAILY_INACTIVE_SYNC
+                        )
                         break
                 else:
                     logger.info(f"[{current_date.isoformat()}] Kaydedilecek pasif veri bulunamadı, sonraki gün...")
@@ -502,6 +532,12 @@ class TKGMScraper:
             except Exception as e:
                 logger.error(f"Pasif parsel işleme hatası: {e}")
                 summary_errors += 1
+                # Hata durumunda mevcut ilerlemeyi kaydet
+                self.db.update_setting(
+                    query_date=current_date, 
+                    start_index=current_index, 
+                    scrape_type=SettingsRepository.TYPE_DAILY_INACTIVE_SYNC
+                )
                 break
 
         # İşlem tamamlandığında final güncelleme
@@ -545,6 +581,12 @@ class TKGMScraper:
             
             if content is None:
                 logger.error("TKGM servisinden parsel verisi alınamadı")
+                # Hata durumunda mevcut ilerlemeyi kaydet
+                self.db.update_setting(
+                    query_date=current_date, 
+                    start_index=current_index, 
+                    scrape_type=SettingsRepository.TYPE_FULLY_SYNC
+                )
                 break
             
             processor = WFSGeometryProcessor()
@@ -581,10 +623,22 @@ class TKGMScraper:
 
                 except Exception as e:
                     logger.error(f"Veritabanına kaydetme hatası: {e}")
+                    # Hata durumunda mevcut ilerlemeyi kaydet
+                    self.db.update_setting(
+                        query_date=current_date, 
+                        start_index=current_index, 
+                        scrape_type=SettingsRepository.TYPE_FULLY_SYNC
+                    )
                     break
 
             except Exception as e:
                 logger.error(f"Parsel verilerini işlerken hata: {e}")
+                # Hata durumunda mevcut ilerlemeyi kaydet
+                self.db.update_setting(
+                    query_date=current_date, 
+                    start_index=current_index, 
+                    scrape_type=SettingsRepository.TYPE_FULLY_SYNC
+                )
                 break
         
         # İşlem tamamlandığında final güncelleme
