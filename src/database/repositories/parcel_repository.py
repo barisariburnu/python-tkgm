@@ -154,11 +154,9 @@ class ParcelRepository(BaseRepository):
                             terkinislemfenkayitref = EXCLUDED.terkinislemfenkayitref,
                             yanilmasiniri = EXCLUDED.yanilmasiniri,
                             hesapverikalite = EXCLUDED.hesapverikalite,
-                            updated_at = CURRENT_TIMESTAMP,
-                            geom = EXCLUDED.geom
+                            geom = EXCLUDED.geom,
+                            updated_at = CURRENT_TIMESTAMP
                         WHERE
-                            -- Sadece gelen kayıt daha güncel ise güncelle
-                            -- Mevcut kayıtta sistemkayittarihi NULL ise güncelle
                             tk_parsel.sistemkayittarihi IS NULL
                             OR EXCLUDED.sistemkayittarihi > tk_parsel.sistemkayittarihi
                         """, (
