@@ -7,7 +7,7 @@ import time
 import requests
 from requests.auth import HTTPBasicAuth
 from typing import Optional, Dict
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from datetime import datetime
 from loguru import logger
 
@@ -56,16 +56,15 @@ class TKGMClient:
             
             # Minimal bir istek gönder
             test_params = {
-                'REQUEST': 'GetFeature',
-                'SERVICE': 'WFS',
-                'SRSNAME': 'EPSG:4326',
-                'VERSION': '1.1.2',
-                'TYPENAME':  settings.MAHALLELER,
-                'MAXFEATURES': '1',
-                'STARTINDEX': '0'
+                'request': 'GetFeature',
+                'service': 'WFS',
+                'version': '1.1.2',
+                'typeName':  settings.MAHALLELER,
+                'maxFeatures': '1',
+                'startIndex': '0'
             }
             
-            test_url = f"{self.base_url}?{urlencode(test_params)}"
+            test_url = f"{self.base_url}?{urlencode(test_params, quote_via=quote)}"
             logger.debug(f"Test URL: {test_url}")
             response = self.session.get(test_url, timeout=self.timeout)
             response.raise_for_status()
@@ -84,15 +83,20 @@ class TKGMClient:
     
 
     def _build_request_params(self, start_index: int = 0, cql_filter: str = None) -> Dict[str, str]:
-        """WFS istek parametrelerini oluştur"""
+        """WFS istek parametrelerini oluştur
+        
+        Not: SRSNAME parametresi kasıtlı olarak dahil edilmemiştir.
+        TKGM sunucusu bu parametreyle birlikte belirli CQL filtrelerinde
+        500 Internal Server Error dönebilmektedir. Varsayılan koordinat
+        sistemi (EPSG:4326) sunucu tarafında zaten kullanılmaktadır.
+        """
         params = {
-            'SERVICE': 'WFS',
-            'VERSION': '1.1.2',
-            'REQUEST': 'GetFeature',
-            'SRSNAME': 'EPSG:4326',
-            'TYPENAME': self.typename,
-            'MAXFEATURES': str(self.max_features),
-            'STARTINDEX': str(start_index)
+            'service': 'WFS',
+            'version': '1.1.2',
+            'request': 'GetFeature',
+            'typeName': self.typename,
+            'maxFeatures': str(self.max_features),
+            'startIndex': str(start_index)
         }
         
         # CQL filtre varsa ve None/boş değilse ekle
@@ -105,7 +109,7 @@ class TKGMClient:
     def fetch_features(self, start_index: int = 0, cql_filter: str = None) -> Optional[Dict]:
         """WFS servisinden özellikleri çek"""
         params = self._build_request_params(start_index, cql_filter)
-        url = f"{self.base_url}?{urlencode(params)}"
+        url = f"{self.base_url}?{urlencode(params, quote_via=quote)}"
         logger.info(f"Request URL: {url}")
     
         metadata = {
@@ -181,15 +185,22 @@ class TKGMClient:
                 metadata['error_message'] = error_msg
                 metadata['http_status_code'] = e.response.status_code
                 
+                # Response body'yi debug için logla
+                try:
+                    try:
+                        response_text = e.response.content.decode('utf-8')
+                    except Exception:
+                        response_text = e.response.text
+                    
+                    if response_text:
+                        logger.debug(f"HTTP {e.response.status_code} response body: {response_text[:2000]}")
+                except Exception as parse_error:
+                    logger.debug(f"Response body okunamadı: {parse_error}")
+                
                 # Check for daily limit message in HTTP 500 responses
                 if e.response.status_code == 500:
                     try:
-                        try:
-                            response_text = e.response.content.decode('utf-8')
-                        except:
-                            response_text = e.response.text
-                        
-                        if "limit" in response_text.lower():
+                        if response_text and "limit" in response_text.lower():
                             logger.error("⚠️  GÜNLÜK LİMİT AŞILDI! Servis limiti tüketildi.")
                             
                             if self.db:
@@ -198,8 +209,8 @@ class TKGMClient:
                                 settings_repo.set_daily_limit_reached()
                             
                             return None
-                    except Exception as parse_error:
-                        logger.debug(f"Limit mesajı parse edilirken hata: {parse_error}")
+                    except Exception as limit_error:
+                        logger.debug(f"Limit mesajı parse edilirken hata: {limit_error}")
                 
                 # 4xx hataları için tekrar deneme yapma
                 if 400 <= e.response.status_code < 500:
