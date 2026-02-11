@@ -240,7 +240,9 @@ class TKGMScraper:
         max_features = settings.MAX_FEATURES
         current_index = start_index
         current_date = start_date if start_date else (datetime.now() - timedelta(days=1))
-        end_date = datetime.now()
+        # Sadece tamamlanmı günleri işle (Bugünü dahil etme)
+        end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        
         
         # Özet metrikleri
         summary_found = 0
@@ -401,7 +403,9 @@ class TKGMScraper:
         max_features = settings.MAX_FEATURES
         current_index = start_index
         current_date = start_date if start_date else (datetime.now() - timedelta(days=1))
-        end_date = datetime.now()
+        # Sadece tamamlanmı günleri işle (Bugünü dahil etme)
+        end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
 
         # Özet metrikleri
         summary_found = 0
