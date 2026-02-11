@@ -34,10 +34,10 @@ def daily_inactive_job():
     run_task("/usr/bin/python3 /app/main.py --daily-inactive", "Daily Inactive Sync")
 
 def oracle_sync_job():
-    run_task("/app/scripts/sync-oracle.sh", "Oracle Sync")
+    run_task("sed -i 's/\\r$//' /app/scripts/sync-oracle.sh && bash /app/scripts/sync-oracle.sh", "Oracle Sync")
 
 def postgres_sync_job():
-    run_task("/app/scripts/sync-postgresql.sh", "PostgreSQL Sync")
+    run_task("sed -i 's/\\r$//' /app/scripts/sync-postgresql.sh && bash /app/scripts/sync-postgresql.sh", "PostgreSQL Sync")
 
 def dispatch_sync_job():
     """DB durumuna göre uygun senkronizasyon görevini tetikler"""
