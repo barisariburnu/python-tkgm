@@ -109,6 +109,7 @@ class SchemaManager:
         
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_logs_typename ON tk_logs (typename);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_logs_query_time ON tk_logs (query_time);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_logs_is_successful ON tk_logs (is_successful);")
     
     def _create_district_table(self, cursor):
         """İlçe tablosunu oluştur"""

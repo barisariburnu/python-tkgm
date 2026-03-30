@@ -220,6 +220,51 @@ print(result)
   - Bağlantı testleri ve tablo hazırlığı (truncate veya oluşturma)
   - Ortam değişkenleri `.env` üzerinden okunur.
 
+## Log Explorer (Log Sorgu Aracı)
+
+`tk_logs` tablosundaki WFS API yanıtlarını parsel bilgilerine göre arayıp, eşleşen `gml:featureMember` bloklarının tüm alt değerlerini okunabilir formatta gösterir. Veri tutarsızlıklarını araştırmak için kullanılır.
+
+### Kullanım
+
+```bash
+# Belirli bir parseli içeren log kayıtlarını bul
+python main.py --query-logs --adano 7271 --parselno 11
+
+# Tarih aralığı ile filtrele
+python main.py --query-logs --adano 7271 --date-from 2025-11-01 --date-to 2025-11-30
+
+# Belirli bir durum değeri ile ara
+python main.py --query-logs --tapukimlikno 12345678 --durum 3 --limit 5
+
+# Belirli bir log kaydının detayını ve içindeki tüm parselleri görüntüle
+python main.py --log-id 4521
+```
+
+### Parametreler
+
+| Parametre | Tip | Açıklama |
+|---|---|---|
+| `--query-logs` | flag | Log sorgu modunu başlatır |
+| `--adano` | int | Ada numarası ile filtrele |
+| `--parselno` | int | Parsel numarası ile filtrele |
+| `--tapukimlikno` | int | Tapu kimlik numarası ile filtrele |
+| `--durum` | str | Durum değeri ile filtrele |
+| `--date-from` | str | Başlangıç tarihi (YYYY-MM-DD) |
+| `--date-to` | str | Bitiş tarihi (YYYY-MM-DD) |
+| `--log-id` | int | Belirli bir log kaydını ID ile görüntüle |
+| `--limit` | int | Maksimum sonuç sayısı (varsayılan: 10) |
+
+### Nasıl Çalışır
+
+1. SQL `LIKE` ile `response_xml` alanında XML tag pattern’i aranır (ör: `%<TKGM:adano>7271</TKGM:adano>%`)
+2. Aday loglar Python’da XML parse edilerek gerçek kombinasyon eşleşmesi yapılır
+3. Eşleşmeyen loglar sonuçtan elenir — sadece gerçek eşleşme olan loglar gösterilir
+4. Her eşleşen `gml:featureMember` bloğunun tüm alt alanları (fid, durum, tapualan, onaydurum, kayıt/güncelleme tarihleri vb.) detay kartı olarak gösterilir
+
+### Durum Tutarsızlığı Hakkında Not
+
+`tk_parsel` tablosundaki `durum` değeri, log kayıtlarındaki değerden farklı olabilir. Bunun sebebi upsert mekanizmasıdır: `ON CONFLICT (tapukimlikno, tapuzeminref) DO UPDATE ... WHERE EXCLUDED.sistemkayittarihi > tk_parsel.sistemkayittarihi`. Aynı parsel önce pasif sync’te `durum=2` olarak kaydedilip, sonra aktif sync’te `durum=3` ile güncellenmiş olabilir. Log Explorer ile her iki kaydın hangi tarihte ve hangi sync işleminde geldiğini takip edebilirsiniz.
+
 ## Docker ve Cron
 - `Dockerfile` içinde cron job’lar tanımlı:
   - `0 2 * * *` günlük parsel senkronizasyonu (`/app/main.py --daily`)

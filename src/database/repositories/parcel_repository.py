@@ -157,8 +157,9 @@ class ParcelRepository(BaseRepository):
                             geom = EXCLUDED.geom,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE
-                            tk_parsel.sistemkayittarihi IS NULL
-                            OR EXCLUDED.sistemkayittarihi > tk_parsel.sistemkayittarihi
+                            tk_parsel.sistemguncellemetarihi IS NULL
+                            OR tk_parsel.sistemkayittarihi IS NULL
+                            OR EXCLUDED.sistemguncellemetarihi > tk_parsel.sistemguncellemetarihi
                         """, (
                             feature.get('fid'), feature.get('parselno'), feature.get('adano'),
                             feature.get('tapukimlikno'), feature.get('tapucinsaciklama'),

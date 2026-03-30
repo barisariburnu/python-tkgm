@@ -118,3 +118,13 @@ class DatabaseManager:
             execution_duration, notes
         )
 
+    # Log query methods
+    def search_logs_by_parcel(self, **kwargs):
+        return self.log_repo.search_logs_by_parcel(**kwargs)
+
+    def get_log_by_id(self, log_id):
+        return self.log_repo.get_log_by_id(log_id)
+
+    def get_log_summary(self, **kwargs):
+        return self.log_repo.get_log_summary(**kwargs)
+
