@@ -39,6 +39,9 @@ def oracle_sync_job():
 def postgres_sync_job():
     run_task("sed -i 's/\\r$//' /app/scripts/sync-postgresql.sh && bash /app/scripts/sync-postgresql.sh", "PostgreSQL Sync")
 
+def postgres_sync_job():
+    run_task("sed -i 's/\\r$//' /app/scripts/sync-postgresql-kadastro-yeni.sh && bash /app/scripts/sync-postgresql-kadastro-yeni.sh", "PostgreSQL Kadastro Yeni Sync")
+
 def dispatch_sync_job():
     """DB durumuna göre uygun senkronizasyon görevini tetikler"""
     try:

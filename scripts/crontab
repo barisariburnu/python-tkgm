@@ -11,3 +11,6 @@
 
 # PostgreSQL senkronizasyonu - Her gün 20:00'de
 0 20 * * * /app/scripts/sync-postgresql.sh 2>&1
+
+# PostgreSQL senkronizasyonu - Her gün 20:00'de
+0 20 * * * /app/scripts/sync-postgresql-kadastro-yeni.sh 2>&1

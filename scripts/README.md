@@ -19,13 +19,18 @@ Bu dizin TKGM verilerinin farklı veritabanlarına senkronize edilmesi için ger
 # PostgreSQL sync
 ./scripts/sync-postgresql.sh
 
+# PostgreSQL Kadastro Yeni sync
+./scripts/sync-postgresql-kadastro-yeni.sh
+
 # Bağlantı testi
 ./scripts/sync-oracle.sh --test
 ./scripts/sync-postgresql.sh --test
+./scripts/sync-postgresql-kadastro-yeni.sh --test
 
 # SQL sorgusunu görüntüleme
 ./scripts/sync-oracle.sh --dry-run
 ./scripts/sync-postgresql.sh --dry-run
+./scripts/sync-postgresql-kadastro-yeni.sh --dry-run
 ```
 
 ### Cron ile Otomatik Çalıştırma
@@ -114,6 +119,13 @@ POSTGRES_TARGET_TABLE=tk_parsel
 - VACUUM ANALYZE ile istatistik güncelleme
 - Detaylı loglama
 
+### sync-postgresql-kadastro-yeni.sh
+- PostgreSQL'den PostgreSQL'e veri aktarımı
+- Tablo varsa TRUNCATE, yoksa CREATE
+- GIST spatial index otomatiği
+- VACUUM ANALYZE ile istatistik güncelleme
+- Detaylı loglama
+
 ### Ortak Özellikler
 - Bağlantı testleri
 - Veri doğrulama
@@ -135,7 +147,7 @@ Yeni loglama sisteminde her işlem tipi için **tek bir merkezi log dosyası** k
 
 ### Self-Cleanup (Kendi Kendini Temizleme)
 
-Her script (`sync-oracle.sh`, `sync-postgresql.sh`) kendi log dosyasını yönetir:
+Her script (`sync-oracle.sh`, `sync-postgresql.sh`, `sync-postgresql-kadastro-yeni.sh`) kendi log dosyasını yönetir:
 
 - **Kontrol Zamanı**: Script çalışması bittiğinde
 - **Maksimum Boyut**: 100MB
@@ -173,6 +185,9 @@ grep "ERROR" /app/logs/cron_oracle.log
 
 # PostgreSQL senkronizasyonu - Her gün 20:00
 0 20 * * * /app/scripts/sync-postgresql.sh
+
+# PostgreSQL senkronizasyonu - Her gün 20:00
+0 20 * * * /app/scripts/sync-postgresql-kadastro-yeni.sh
 ```
 
 ### Farklı Saatler İçin
@@ -195,6 +210,7 @@ Cron zamanlamasını değiştirmek için `scripts/crontab` dosyasını düzenley
 # Test komutu ile kontrol edin
 ./scripts/sync-oracle.sh --test
 ./scripts/sync-postgresql.sh --test
+./scripts/sync-postgresql-kadastro-yeni.sh --test
 ```
 
 ### Cron Çalışmıyor
