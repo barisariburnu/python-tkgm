@@ -31,7 +31,7 @@ load_config() {
             break
         fi
     done
-    LOG_FILE="${log_dir:-./}/cron_kadastro.log"
+    LOG_FILE="${log_dir:-./}/cron_postgresql_kadastro_yeni.log"
 
     # Source Database configuration (PostgreSQL)
     POSTGRES_SOURCE_HOST="${POSTGRES_SOURCE_HOST:-localhost}"
