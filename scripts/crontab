@@ -1,16 +1,19 @@
 # TKGM Veritabanı Senkronizasyon Görevleri
+#
+# NOT: Bu dosya referans/yedek amaçlıdır.
+#      Aktif zamanlama Python Scheduler (run_scheduler.py) tarafından yönetilmektedir.
+#      Cron kullanmak isterseniz entrypoint.sh'e "service cron start" eklemeniz gerekir.
+#
+# Sözdizimi: dakika saat gün ay haftanın_günü komut
 
-# TKGM Servis İstekleri - Her saat başında aktif veri çekme
-0 * * * * cd /app && /usr/bin/python3 /app/main.py --daily >> /app/logs/app-daily-active.log 2>&1
+# TKGM Servis İstekleri — Her 10 dakikada bir aktif/pasif dispatch
+*/10 * * * * cd /app && /usr/bin/python3 /app/main.py --daily >> /app/logs/app-daily-active.log 2>&1
 
-# TKGM Servis İstekleri - Her saatin 30. dakikasında pasif veri çekme
-10 * * * * cd /app && /usr/bin/python3 /app/main.py --daily-inactive >> /app/logs/app-daily-inactive.log 2>&1
+# Oracle senkronizasyonu — Her gün 20:00'de
+0 20 * * * bash /app/scripts/sync-oracle.sh >> /app/logs/cron_oracle.log 2>&1
 
-# Oracle senkronizasyonu - Her gün 20:00'de
-0 20 * * * /app/scripts/sync-oracle.sh 2>&1
+# PostgreSQL senkronizasyonu — Her gün 21:00'de
+0 21 * * * bash /app/scripts/sync-postgresql.sh >> /app/logs/cron_postgresql.log 2>&1
 
-# PostgreSQL senkronizasyonu - Her gün 20:00'de
-0 20 * * * /app/scripts/sync-postgresql.sh 2>&1
-
-# PostgreSQL senkronizasyonu - Her gün 20:00'de
-0 20 * * * /app/scripts/sync-postgresql-kadastro-yeni.sh 2>&1
+# PostgreSQL Kadastro Yeni senkronizasyonu — Her gün 22:00'de
+0 22 * * * bash /app/scripts/sync-postgresql-kadastro-yeni.sh >> /app/logs/cron_postgresql_kadastro_yeni.log 2>&1

@@ -10,6 +10,7 @@ ENV PGCLIENTENCODING=UTF8 \
     PYTHONUNBUFFERED=1
 
 # Install base dependencies
+# Not: cron servisi kullanılmıyor; zamanlama Python Scheduler (run_scheduler.py) tarafından yönetiliyor.
 RUN apt-get update && apt-get install -y \
     postgresql-client \
     python3 \
@@ -21,7 +22,6 @@ RUN apt-get update && apt-get install -y \
     unzip \
     libaio1 \
     curl \
-    cron \
     vim \
     alien \
     build-essential \
@@ -148,17 +148,8 @@ RUN sed -i 's/\r$//' /app/scripts/sync-oracle.sh \
 # Entrypoint'i root'a kopyala
 RUN cp /app/entrypoint.sh /entrypoint.sh && chmod +x /entrypoint.sh
 
-# Cron job'ları ayarla - crontab dosyasını kullan
-RUN sed -i 's/\r$//' /app/scripts/crontab \
-    && cp /app/scripts/crontab /etc/cron.d/tkgm \
-    && chmod 0644 /etc/cron.d/tkgm \
-    && crontab /etc/cron.d/tkgm
-
 # Log dizinini oluştur
 RUN mkdir -p /app/logs
-
-# Environment değişkenlerini cron için hazırla
-RUN printenv | grep -v "no_proxy" >> /etc/environment
 
 # Sürümleri ve sürücüleri test et
 RUN ogrinfo --formats | grep -i oci || echo "Warning: OCI driver not found" \
