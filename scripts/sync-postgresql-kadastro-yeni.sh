@@ -117,7 +117,7 @@ get_sql_query() {
 SELECT
     CAST(p.fid AS INTEGER) AS "object_id",
     CAST(p.tapukimlikno AS BIGINT) AS "tapu_kimlik_no",
-    CAST(m.fid AS BIGINT) AS "tapu_mahalle_id",
+    CAST(p.tapumahalleref AS BIGINT) AS "tapu_mahalle_id",
     CAST(p.tapuzeminref AS INTEGER) AS "tapu_zemin_ref",
     CAST(p.adano AS VARCHAR(255)) AS "ada",
     CAST(p.parselno AS VARCHAR(255)) AS "parsel",
