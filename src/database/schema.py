@@ -19,6 +19,7 @@ class SchemaManager:
             with self.db.get_connection() as conn:
                 with conn.cursor() as cursor:
                     self._create_parcel_table(cursor)
+                    self._create_parsel_4326_table(cursor)
                     self._create_log_table(cursor)
                     self._create_district_table(cursor)
                     self._create_neighbourhood_table(cursor)
@@ -86,6 +87,59 @@ class SchemaManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_parselno ON tk_parsel (parselno);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_adano ON tk_parsel (adano);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_sistemkayittarihi ON tk_parsel (sistemkayittarihi);")
+
+    def _create_parsel_4326_table(self, cursor):
+        """tk_parsel_4326 tablosunu oluştur - Servisten gelen orijinal EPSG:4326 (WGS84) verileri için"""
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tk_parsel_4326 (
+                id SERIAL PRIMARY KEY,
+                fid BIGINT,
+                parselno BIGINT,
+                adano BIGINT,
+                tapukimlikno BIGINT,
+                tapucinsaciklama TEXT,
+                tapuzeminref BIGINT,
+                tapumahalleref BIGINT,
+                tapualan DECIMAL(15,2),
+                tip VARCHAR(100),
+                belirtmetip VARCHAR(100),
+                durum VARCHAR(100),
+                geom GEOMETRY(MULTIPOLYGON, 4326),
+                sistemkayittarihi TIMESTAMP,
+                onaydurum BIGINT,
+                kadastroalan DECIMAL(15,2),
+                tapucinsid BIGINT,
+                sistemguncellemetarihi TIMESTAMP,
+                kmdurum VARCHAR(100),
+                hazineparseldurum VARCHAR(100),
+                terksebep VARCHAR(200),
+                detayuretimyontem VARCHAR(100),
+                orjinalgeomwkt TEXT,
+                orjinalgeomkoordinatsistem VARCHAR(50),
+                orjinalgeomuretimyontem VARCHAR(100),
+                dom VARCHAR(100),
+                epok VARCHAR(50),
+                detayverikalite VARCHAR(100),
+                orjinalgeomepok VARCHAR(50),
+                parseltescildurum VARCHAR(100),
+                olcuyontem VARCHAR(100),
+                detayarsivonaylikoordinat VARCHAR(100),
+                detaypaftazeminuyumluluk VARCHAR(100),
+                tesisislemfenkayitref VARCHAR(100),
+                terkinislemfenkayitref VARCHAR(100),
+                yanilmasiniri DECIMAL(10,2),
+                hesapverikalite VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(tapukimlikno, tapuzeminref)
+            );
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_4326_geom ON tk_parsel_4326 USING GIST (geom);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_4326_tapukimlikno ON tk_parsel_4326 (tapukimlikno);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_4326_parselno ON tk_parsel_4326 (parselno);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_4326_adano ON tk_parsel_4326 (adano);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_4326_sistemkayittarihi ON tk_parsel_4326 (sistemkayittarihi);")
     
     def _create_log_table(self, cursor):
         """Log tablosunu oluştur"""

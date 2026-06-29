@@ -172,15 +172,18 @@ class WFSGeometryProcessor:
             
             # EPSG:2320'ye dönüştür
             coords_2320 = self.transform_to_target_crs(coords_4326)
-            
+
             # WKT formatına çevir
             wkt = self.coords_to_wkt_polygon(coords_2320)
-            
+            # Orijinal EPSG:4326 WKT (dönüşümsüz) - tk_parsel_4326 tablosu için
+            wkt_4326 = self.coords_to_wkt_polygon(coords_4326)
+
             return {
                 'geometry_type': 'Polygon',
                 'original_coords': coords_4326,
                 'transformed_coords': coords_2320,
                 'wkt': wkt,
+                'wkt_4326': wkt_4326,
                 'original_crs': self.source_crs,
                 'target_crs': self.target_crs
             }
@@ -252,21 +255,23 @@ class WFSGeometryProcessor:
                 'terkinislemfenkayitref': self.extract_text(parcel_elem, 'TKGM:terkinislemfenkayitref'),
                 'hesapverikalite': self.extract_text(parcel_elem, 'TKGM:hesapverikalite'),
             }
-            
-            # Geometri verilerini ekle
+
+            # Geometri verilerini ekle (parsel)
             if geometry_data:
                 result.update({
                     'geometry_type': geometry_data['geometry_type'],
                     'original_coords': geometry_data['original_coords'],
                     'transformed_coords': geometry_data['transformed_coords'],
-                    'wkt': geometry_data['wkt']
+                    'wkt': geometry_data['wkt'],
+                    'wkt_4326': geometry_data.get('wkt_4326')
                 })
             else:
                 result.update({
                     'geometry_type': None,
                     'original_coords': [],
                     'transformed_coords': [],
-                    'wkt': None
+                    'wkt': None,
+                    'wkt_4326': None
                 })
             
             return result

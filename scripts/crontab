@@ -15,5 +15,8 @@
 # PostgreSQL senkronizasyonu — Her gün 21:00'de
 0 21 * * * bash /app/scripts/sync-postgresql.sh >> /app/logs/cron_postgresql.log 2>&1
 
+# PostgreSQL senkronizasyonu (EPSG:4326) — Her gün 21:30'de
+30 21 * * * bash /app/scripts/sync-postgresql-4326.sh >> /app/logs/cron_postgresql_4326.log 2>&1
+
 # PostgreSQL Kadastro Yeni senkronizasyonu — Her gün 22:00'de
 0 22 * * * bash /app/scripts/sync-postgresql-kadastro-yeni.sh >> /app/logs/cron_postgresql_kadastro_yeni.log 2>&1

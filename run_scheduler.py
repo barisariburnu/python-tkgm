@@ -139,6 +139,13 @@ def postgres_kadastro_yeni_sync_job() -> None:
     )
 
 
+def postgres_sync_4326_job() -> None:
+    run_task_in_thread(
+        "bash /app/scripts/sync-postgresql-4326.sh",
+        "PostgreSQL Sync (EPSG:4326)",
+    )
+
+
 def dispatch_sync_job() -> None:
     """
     DB'deki son senkronizasyon durumuna göre aktif veya pasif sync'i tetikler.
@@ -213,6 +220,9 @@ def main() -> None:
 
     schedule.every().day.at("21:00").do(postgres_sync_job)
     logger.info("Registered: PostgreSQL Sync (Every day at 21:00)")
+
+    schedule.every().day.at("21:30").do(postgres_sync_4326_job)
+    logger.info("Registered: PostgreSQL Sync 4326 (Every day at 21:30)")
 
     schedule.every().day.at("22:00").do(postgres_kadastro_yeni_sync_job)
     logger.info("Registered: PostgreSQL Kadastro Yeni Sync (Every day at 22:00)")

@@ -319,6 +319,15 @@ class TKGMScraper:
                         )
                         summary_saved += saved_count
 
+                        # Orijinal EPSG:4326 koordinatlariyla tk_parsel_4326 tablosuna da kaydet
+                        try:
+                            saved_4326_count = self.db.insert_parcels_4326(all_features)
+                            logger.info(
+                                f"[{current_date}] tk_parsel_4326 tablosuna {saved_4326_count} kayıt yazıldı"
+                            )
+                        except Exception as e:
+                            logger.error(f"tk_parsel_4326 kayıt hatası: {e}")
+
                         # Başarılı çekim sonrası raporu Telegram'a gönder
                         if self.notifier.is_configured():
                             try:
@@ -481,6 +490,15 @@ class TKGMScraper:
                         )
                         summary_saved += saved_count
 
+                        # Orijinal EPSG:4326 koordinatlariyla tk_parsel_4326 tablosuna da kaydet
+                        try:
+                            saved_4326_count = self.db.insert_parcels_4326(all_features)
+                            logger.info(
+                                f"[{current_date}] tk_parsel_4326 (pasif) tablosuna {saved_4326_count} kayıt yazıldı"
+                            )
+                        except Exception as e:
+                            logger.error(f"tk_parsel_4326 (pasif) kayıt hatası: {e}")
+
                         # Başarılı çekim sonrası raporu Telegram'a gönder
                         if self.notifier.is_configured():
                             try:
@@ -612,6 +630,13 @@ class TKGMScraper:
                     saved_count = self.db.insert_parcels(all_features)
                     unsaved_count = max(0, len(all_features) - saved_count)
                     logger.info(f"{saved_count} parsel veritabanına kaydedildi, {unsaved_count} kaydedilemedi")
+
+                    # Orijinal EPSG:4326 koordinatlariyla tk_parsel_4326 tablosuna da kaydet
+                    try:
+                        saved_4326_count = self.db.insert_parcels_4326(all_features)
+                        logger.info(f"tk_parsel_4326 tablosuna {saved_4326_count} kayıt yazıldı")
+                    except Exception as e:
+                        logger.error(f"tk_parsel_4326 (full sync) kayıt hatası: {e}")
 
                     # Sonraki sayfa için start_index'i artır
                     current_index += max_features

@@ -5,7 +5,8 @@ Bu dizin TKGM verilerinin farklı veritabanlarına senkronize edilmesi için ger
 ## 📄 Dosyalar
 
 - **sync-oracle.sh**: PostgreSQL'den Oracle'a TKGM verisi aktarımı
-- **sync-postgresql.sh**: PostgreSQL'den PostgreSQL'e TKGM verisi aktarımı
+- **sync-postgresql.sh**: PostgreSQL'den PostgreSQL'e TKGM verisi aktarımı (EPSG:2320)
+- **sync-postgresql-4326.sh**: PostgreSQL'den PostgreSQL'e TKGM verisi aktarımı (EPSG:4326)
 - **crontab**: Otomatik çalışma zamanları (cron jobs)
 
 ## 🚀 Kullanım
@@ -19,17 +20,22 @@ Bu dizin TKGM verilerinin farklı veritabanlarına senkronize edilmesi için ger
 # PostgreSQL sync
 ./scripts/sync-postgresql.sh
 
+# PostgreSQL 4326 sync
+./scripts/sync-postgresql-4326.sh
+
 # PostgreSQL Kadastro Yeni sync
 ./scripts/sync-postgresql-kadastro-yeni.sh
 
 # Bağlantı testi
 ./scripts/sync-oracle.sh --test
 ./scripts/sync-postgresql.sh --test
+./scripts/sync-postgresql-4326.sh --test
 ./scripts/sync-postgresql-kadastro-yeni.sh --test
 
 # SQL sorgusunu görüntüleme
 ./scripts/sync-oracle.sh --dry-run
 ./scripts/sync-postgresql.sh --dry-run
+./scripts/sync-postgresql-4326.sh --dry-run
 ./scripts/sync-postgresql-kadastro-yeni.sh --dry-run
 ```
 
@@ -106,6 +112,7 @@ POSTGRES_TARGET_TABLE=tk_parsel
 ## 📋 Özellikler
 
 ### sync-oracle.sh
+
 - PostgreSQL'den Oracle'a veri aktarımı
 - Tablo varsa TRUNCATE, yoksa CREATE
 - Spatial index otomatiği
@@ -113,13 +120,24 @@ POSTGRES_TARGET_TABLE=tk_parsel
 - Detaylı loglama
 
 ### sync-postgresql.sh
+
 - PostgreSQL'den PostgreSQL'e veri aktarımı
 - Tablo varsa TRUNCATE, yoksa CREATE
 - GIST spatial index otomatiği
 - VACUUM ANALYZE ile istatistik güncelleme
 - Detaylı loglama
 
+### sync-postgresql-4326.sh
+
+- tk_parsel_4326 tablosu için EPSG:4326 (WGS84) koordinat sistemiyle aktarım
+- Servisten gelen orijinal WGS84 koordinatları dönüşümsüz olarak hedef tabloya yazar
+- Tablo varsa TRUNCATE, yoksa CREATE
+- GIST spatial index otomatiği
+- VACUUM ANALYZE ile istatistik güncelleme
+- Detaylı loglama
+
 ### sync-postgresql-kadastro-yeni.sh
+
 - PostgreSQL'den PostgreSQL'e veri aktarımı
 - Tablo varsa TRUNCATE, yoksa CREATE
 - GIST spatial index otomatiği
@@ -127,6 +145,7 @@ POSTGRES_TARGET_TABLE=tk_parsel
 - Detaylı loglama
 
 ### Ortak Özellikler
+
 - Bağlantı testleri
 - Veri doğrulama
 - Progress tracking
@@ -134,6 +153,7 @@ POSTGRES_TARGET_TABLE=tk_parsel
 - Timestamp'li log dosyaları
 
 ## 📊 Log Yönetimi
+
 ### Merkezi Log Dosyaları
 
 Yeni loglama sisteminde her işlem tipi için **tek bir merkezi log dosyası** kullanılır:
@@ -183,8 +203,11 @@ grep "ERROR" /app/logs/cron_oracle.log
 # Oracle senkronizasyonu - Her gün 20:00
 0 20 * * * /app/scripts/sync-oracle.sh
 
-# PostgreSQL senkronizasyonu - Her gün 20:00
-0 20 * * * /app/scripts/sync-postgresql.sh
+# PostgreSQL senkronizasyonu - Her gün 21:00
+0 21 * * * /app/scripts/sync-postgresql.sh
+
+# PostgreSQL 4326 senkronizasyonu - Her gün 21:30
+30 21 * * * /app/scripts/sync-postgresql-4326.sh
 
 # PostgreSQL senkronizasyonu - Her gün 20:00
 0 20 * * * /app/scripts/sync-postgresql-kadastro-yeni.sh

@@ -243,3 +243,196 @@ class ParcelRepository(BaseRepository):
                 self.db.return_connection(conn)
 
         return saved_count
+
+    def insert_parcels_4326(self, features: List[Union[Dict[str, Any], 'ParcelFeature']]) -> int:
+        """
+        Parsel verilerini orijinal EPSG:4326 (WGS84) koordinatlarıyla tk_parsel_4326 tablosuna kaydet.
+
+        Mevcut tk_parsel tablosundaki kayıt stratejisinin aynısı uygulanır:
+        - Tek transaction (hız)
+        - Failed records (veri kaybı önleme)
+        - UNIQUE constraint ile duplicate önleme
+        - sistemguncellemetarihi bazlı koşullu UPDATE
+        """
+        if not features:
+            logger.warning("Kayıt yapılacak parsel verisi bulunamadı (tk_parsel_4326)")
+            return 0
+
+        saved_count = 0
+        skipped_count = 0
+        error_count = 0
+
+        batch_logger = BatchLogger("Inserting parcels (EPSG:4326)", total=len(features), interval=100)
+
+        conn = None
+        cursor = None
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+
+            for feature_input in features:
+                if MODELS_AVAILABLE and isinstance(feature_input, ParcelFeature):
+                    feature = feature_input.to_dict()
+                else:
+                    feature = feature_input
+
+                geom = None
+                failed_saved = False
+
+                try:
+                    if 'fid' not in feature or not feature['fid']:
+                        logger.debug("Parsel fid değeri eksik, atlanıyor (tk_parsel_4326)")
+                        skipped_count += 1
+                        continue
+
+                    # Orijinal EPSG:4326 WKT kullan
+                    try:
+                        if 'wkt_4326' in feature and isinstance(feature['wkt_4326'], str):
+                            geom = feature.get('wkt_4326')
+                            if not geom:
+                                raise ValueError("Geçerli EPSG:4326 geometri verisi bulunamadı")
+                        elif 'wkt' in feature and isinstance(feature['wkt'], str):
+                            # Geriye uyumluluk: wkt_4326 yoksa wkt kullanılmaz (yanlış SRID riski)
+                            raise ValueError("wkt_4326 alanı bulunamadı, 4326 geometri atlandı")
+                    except Exception as e:
+                        logger.debug(f"Geometri oluşturulurken hata (tk_parsel_4326): {e}")
+                        self.failed_repo.insert_failed_record(
+                            entity_type='parcel_4326',
+                            raw_data=feature,
+                            error=e,
+                            entity_id=str(feature.get('fid', 'unknown'))
+                        )
+                        failed_saved = True
+                        skipped_count += 1
+                        continue
+
+                    try:
+                        cursor.execute("""
+                        INSERT INTO tk_parsel_4326 (
+                            fid, parselno, adano, tapukimlikno, tapucinsaciklama,
+                            tapuzeminref, tapumahalleref, tapualan, tip, belirtmetip,
+                            durum, sistemkayittarihi, onaydurum, kadastroalan,
+                            tapucinsid, sistemguncellemetarihi, kmdurum, hazineparseldurum,
+                            terksebep, detayuretimyontem, orjinalgeomwkt,
+                            orjinalgeomkoordinatsistem, orjinalgeomuretimyontem, dom,
+                            epok, detayverikalite, orjinalgeomepok, parseltescildurum,
+                            olcuyontem, detayarsivonaylikoordinat, detaypaftazeminuyumluluk,
+                            tesisislemfenkayitref, terkinislemfenkayitref, yanilmasiniri,
+                            hesapverikalite, geom
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, ST_GeomFromText(%s, 4326)
+                        ) ON CONFLICT (tapukimlikno, tapuzeminref) DO UPDATE SET
+                            fid = EXCLUDED.fid,
+                            parselno = EXCLUDED.parselno,
+                            adano = EXCLUDED.adano,
+                            tapucinsaciklama = EXCLUDED.tapucinsaciklama,
+                            tapumahalleref = EXCLUDED.tapumahalleref,
+                            tapualan = EXCLUDED.tapualan,
+                            tip = EXCLUDED.tip,
+                            belirtmetip = EXCLUDED.belirtmetip,
+                            durum = EXCLUDED.durum,
+                            sistemkayittarihi = EXCLUDED.sistemkayittarihi,
+                            onaydurum = EXCLUDED.onaydurum,
+                            kadastroalan = EXCLUDED.kadastroalan,
+                            tapucinsid = EXCLUDED.tapucinsid,
+                            sistemguncellemetarihi = EXCLUDED.sistemguncellemetarihi,
+                            kmdurum = EXCLUDED.kmdurum,
+                            hazineparseldurum = EXCLUDED.hazineparseldurum,
+                            terksebep = EXCLUDED.terksebep,
+                            detayuretimyontem = EXCLUDED.detayuretimyontem,
+                            orjinalgeomwkt = EXCLUDED.orjinalgeomwkt,
+                            orjinalgeomkoordinatsistem = EXCLUDED.orjinalgeomkoordinatsistem,
+                            orjinalgeomuretimyontem = EXCLUDED.orjinalgeomuretimyontem,
+                            dom = EXCLUDED.dom,
+                            epok = EXCLUDED.epok,
+                            detayverikalite = EXCLUDED.detayverikalite,
+                            orjinalgeomepok = EXCLUDED.orjinalgeomepok,
+                            parseltescildurum = EXCLUDED.parseltescildurum,
+                            olcuyontem = EXCLUDED.olcuyontem,
+                            detayarsivonaylikoordinat = EXCLUDED.detayarsivonaylikoordinat,
+                            detaypaftazeminuyumluluk = EXCLUDED.detaypaftazeminuyumluluk,
+                            tesisislemfenkayitref = EXCLUDED.tesisislemfenkayitref,
+                            terkinislemfenkayitref = EXCLUDED.terkinislemfenkayitref,
+                            yanilmasiniri = EXCLUDED.yanilmasiniri,
+                            hesapverikalite = EXCLUDED.hesapverikalite,
+                            geom = EXCLUDED.geom,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE
+                            tk_parsel_4326.sistemguncellemetarihi IS NULL
+                            OR tk_parsel_4326.sistemkayittarihi IS NULL
+                            OR EXCLUDED.sistemguncellemetarihi > tk_parsel_4326.sistemguncellemetarihi
+                        """, (
+                            feature.get('fid'), feature.get('parselno'), feature.get('adano'),
+                            feature.get('tapukimlikno'), feature.get('tapucinsaciklama'),
+                            feature.get('tapuzeminref'), feature.get('tapumahalleref'),
+                            feature.get('tapualan'), feature.get('tip'), feature.get('belirtmetip'),
+                            feature.get('durum'), feature.get('sistemkayittarihi'),
+                            feature.get('onaydurum'), feature.get('kadastroalan'),
+                            feature.get('tapucinsid'), feature.get('sistemguncellemetarihi'),
+                            feature.get('kmdurum'), feature.get('hazineparseldurum'),
+                            feature.get('terksebep'), feature.get('detayuretimyontem'),
+                            feature.get('orjinalgeomwkt'), feature.get('orjinalgeomkoordinatsistem'),
+                            feature.get('orjinalgeomuretimyontem'), feature.get('dom'),
+                            feature.get('epok'), feature.get('detayverikalite'),
+                            feature.get('orjinalgeomepok'), feature.get('parseltescildurum'),
+                            feature.get('olcuyontem'), feature.get('detayarsivonaylikoordinat'),
+                            feature.get('detaypaftazeminuyumluluk'),
+                            feature.get('tesisislemfenkayitref'),
+                            feature.get('terkinislemfenkayitref'),
+                            feature.get('yanilmasiniri'), feature.get('hesapverikalite'),
+                            geom
+                        ))
+                        saved_count += 1
+                        batch_logger.log_progress(saved_count)
+
+                    except Exception as e:
+                        logger.error(f"Parsel 4326 kaydedilirken hata: {e}")
+                        logger.debug(f"Hatalı parsel fid (4326): {feature.get('fid', 'N/A')}")
+                        if not failed_saved:
+                            self.failed_repo.insert_failed_record(
+                                entity_type='parcel_4326',
+                                raw_data=feature,
+                                error=e,
+                                entity_id=str(feature.get('fid', 'unknown'))
+                            )
+                            failed_saved = True
+                        error_count += 1
+                        continue
+
+                except Exception as e:
+                    logger.debug(f"Parsel işlenirken hata (tk_parsel_4326): {e}")
+                    if not failed_saved:
+                        self.failed_repo.insert_failed_record(
+                            entity_type='parcel_4326',
+                            raw_data=feature,
+                            error=e,
+                            entity_id=str(feature.get('fid', 'unknown'))
+                        )
+                    error_count += 1
+                    continue
+
+            if conn:
+                conn.commit()
+
+            batch_logger.finalize(
+                success_count=saved_count,
+                error_count=error_count,
+                skip_count=skipped_count
+            )
+
+        except Exception as e:
+            logger.error(f"Toplu insert sırasında kritik hata (tk_parsel_4326): {e}")
+            if conn:
+                conn.rollback()
+                logger.warning("Transaction rollback yapıldı (tk_parsel_4326)")
+            raise
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                self.db.return_connection(conn)
+
+        return saved_count

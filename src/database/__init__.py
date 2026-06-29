@@ -68,6 +68,10 @@ class DatabaseManager:
     # Parcel methods
     def insert_parcels(self, features):
         return self.parcel_repo.insert_parcels(features)
+
+    def insert_parcels_4326(self, features):
+        """Orijinal EPSG:4326 koordinatlariyla tk_parsel_4326 tablosuna kaydet"""
+        return self.parcel_repo.insert_parcels_4326(features)
     
     # District methods
     def insert_districts(self, features):
