@@ -40,7 +40,7 @@ class FailedRecordsRepository(BaseRepository):
             error_message = str(error)
             stack_trace_str = traceback.format_exc()
             
-            with self.db.get_connection() as conn:
+            with self.db.connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         INSERT INTO tk_failed_records (
@@ -81,7 +81,7 @@ class FailedRecordsRepository(BaseRepository):
         Başarısız kayıtları getir (retry için)
         """
         try:
-            with self.db.get_connection() as conn:
+            with self.db.connection() as conn:
                 with conn.cursor() as cursor:
                     if entity_type:
                         cursor.execute("""
@@ -123,7 +123,7 @@ class FailedRecordsRepository(BaseRepository):
     def mark_as_resolved(self, record_id: int) -> bool:
         """Başarıyla retry edildi, resolved olarak işaretle"""
         try:
-            with self.db.get_connection() as conn:
+            with self.db.connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         UPDATE tk_failed_records
@@ -142,7 +142,7 @@ class FailedRecordsRepository(BaseRepository):
     def increment_retry_count(self, record_id: int) -> bool:
         """Retry count'u artır"""
         try:
-            with self.db.get_connection() as conn:
+            with self.db.connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         UPDATE tk_failed_records
@@ -161,7 +161,7 @@ class FailedRecordsRepository(BaseRepository):
     def get_statistics(self) -> Dict[str, Any]:
         """Failed records istatistikleri"""
         try:
-            with self.db.get_connection() as conn:
+            with self.db.connection() as conn:
                 with conn.cursor() as cursor:
                     # Toplam failed records
                     cursor.execute("SELECT COUNT(*) as count FROM tk_failed_records WHERE status = 'failed'")

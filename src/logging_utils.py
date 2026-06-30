@@ -36,7 +36,7 @@ class BatchLogger:
         self.interval = interval
         self.start_time = time.time()
         
-        logger.info(f"🚀 Starting: {operation} ({total} items)")
+        logger.info(f"[START] Starting: {operation} ({total} items)")
     
     def log_progress(self, current: int):
         """
@@ -54,7 +54,7 @@ class BatchLogger:
             rate = current / elapsed if elapsed > 0 else 0
             
             logger.info(
-                f"📊 {self.operation}: {current}/{self.total} ({percentage:.1f}%) "
+                f"[PROGRESS] {self.operation}: {current}/{self.total} ({percentage:.1f}%) "
                 f"- {rate:.1f} items/s"
             )
     
@@ -71,7 +71,7 @@ class BatchLogger:
         rate = success_count / duration if duration > 0 else 0
         
         logger.info(
-            f"✅ {self.operation} completed in {duration:.2f}s\n"
+            f"[DONE] {self.operation} completed in {duration:.2f}s\n"
             f"   Total: {self.total}, Success: {success_count}, "
             f"Errors: {error_count}, Skipped: {skip_count}\n"
             f"   Rate: {rate:.1f} items/s"

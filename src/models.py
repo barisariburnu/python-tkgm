@@ -22,8 +22,8 @@ class ParcelFeature:
     tapukimlikno: Optional[int] = None
     
     # Basic info
-    parselno: Optional[int] = None
-    adano: Optional[int] = None
+    parselno: Optional[str] = None
+    adano: Optional[str] = None
     tapucinsaciklama: Optional[str] = None
     tapuzeminref: Optional[int] = None
     tapumahalleref: Optional[int] = None

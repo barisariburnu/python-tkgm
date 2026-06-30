@@ -43,9 +43,10 @@ class LogExplorer:
     def extract_matching_parcels(
         self,
         response_xml: str,
-        adano: int = None,
-        parselno: int = None,
+        adano: str = None,
+        parselno: str = None,
         tapukimlikno: int = None,
+        tapumahalleref: int = None,
         durum: str = None
     ) -> List[Dict[str, str]]:
         """response_xml içinden filtreye uyan parselleri çıkar (tüm alanlarıyla)"""
@@ -81,6 +82,8 @@ class LogExplorer:
             if parselno is not None and parcel.get('parselno') != str(parselno):
                 continue
             if tapukimlikno is not None and parcel.get('tapukimlikno') != str(tapukimlikno):
+                continue
+            if tapumahalleref is not None and parcel.get('tapumahalleref') != str(tapumahalleref):
                 continue
             if durum is not None and parcel.get('durum') != str(durum):
                 continue
@@ -183,9 +186,10 @@ class LogExplorer:
 
     def search_and_display(
         self,
-        adano: int = None,
-        parselno: int = None,
+        adano: str = None,
+        parselno: str = None,
         tapukimlikno: int = None,
+        tapumahalleref: int = None,
         durum: str = None,
         date_from: str = None,
         date_to: str = None,
@@ -222,6 +226,8 @@ class LogExplorer:
             criteria.append(f"parselno={parselno}")
         if tapukimlikno is not None:
             criteria.append(f"tapukimlikno={tapukimlikno}")
+        if tapumahalleref is not None:
+            criteria.append(f"tapumahalleref={tapumahalleref}")
         if durum is not None:
             criteria.append(f"durum={durum}")
         if dt_from:
@@ -241,6 +247,7 @@ class LogExplorer:
             adano=adano,
             parselno=parselno,
             tapukimlikno=tapukimlikno,
+            tapumahalleref=tapumahalleref,
             durum=durum,
             date_from=dt_from,
             date_to=dt_to,
@@ -263,6 +270,7 @@ class LogExplorer:
                 adano=adano,
                 parselno=parselno,
                 tapukimlikno=tapukimlikno,
+                tapumahalleref=tapumahalleref,
                 durum=durum
             )
             if matching:

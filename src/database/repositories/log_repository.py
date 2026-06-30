@@ -24,7 +24,7 @@ class LogRepository(BaseRepository):
             if execution_duration is not None:
                 duration_interval = f'{execution_duration} seconds'
 
-            with self.db.get_connection() as conn:
+            with self.db.connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         INSERT INTO tk_logs (
@@ -57,9 +57,10 @@ class LogRepository(BaseRepository):
 
     def search_logs_by_parcel(
         self,
-        adano: int = None,
-        parselno: int = None,
+        adano: str = None,
+        parselno: str = None,
         tapukimlikno: int = None,
+        tapumahalleref: int = None,
         durum: str = None,
         date_from: datetime = None,
         date_to: datetime = None,
@@ -87,6 +88,10 @@ class LogRepository(BaseRepository):
         if tapukimlikno is not None:
             conditions.append("response_xml LIKE %s")
             params.append(f"%<TKGM:tapukimlikno>{tapukimlikno}</TKGM:tapukimlikno>%")
+
+        if tapumahalleref is not None:
+            conditions.append("response_xml LIKE %s")
+            params.append(f"%<TKGM:tapumahalleref>{tapumahalleref}</TKGM:tapumahalleref>%")
 
         if durum is not None:
             conditions.append("response_xml LIKE %s")
@@ -139,7 +144,8 @@ class LogRepository(BaseRepository):
         date_to: datetime = None,
         successful_only: bool = None,
         typename: str = None,
-        limit: int = 50
+        limit: int = 50,
+        order_asc: bool = False
     ) -> Optional[List[Dict[str, Any]]]:
         """Log özet listesi (response_xml hariç, hafif sorgu)"""
         conditions = []
@@ -164,14 +170,40 @@ class LogRepository(BaseRepository):
         where_clause = " AND ".join(conditions) if conditions else "1=1"
         params.append(limit)
 
+        order_clause = "query_time ASC" if order_asc else "query_time DESC"
+
         query = f"""
             SELECT id, typename, url, feature_count, is_empty, is_successful,
                    error_message, http_status_code, response_size,
                    query_time, execution_duration, notes
             FROM tk_logs
             WHERE {where_clause}
-            ORDER BY query_time DESC
+            ORDER BY {order_clause}
             LIMIT %s
+        """
+
+        return self._execute_query(query, tuple(params))
+
+    def get_all_logs(
+        self,
+        order_asc: bool = True,
+        successful_only: bool = True
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Tüm log kayıtlarını getir (sıralı)"""
+        conditions = []
+        params = []
+
+        if successful_only:
+            conditions.append("is_successful = TRUE")
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+        order_clause = "query_time ASC" if order_asc else "query_time DESC"
+
+        query = f"""
+            SELECT *
+            FROM tk_logs
+            WHERE {where_clause}
+            ORDER BY {order_clause}
         """
 
         return self._execute_query(query, tuple(params))

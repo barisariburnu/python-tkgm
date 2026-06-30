@@ -60,7 +60,6 @@ class ParcelRepository(BaseRepository):
         cursor = None
         try:
             conn = self.db.get_connection()
-            cursor = conn.cursor()
             
             for feature_input in features:
                 # ✅ TYPE-SAFE: Support both dict and ParcelFeature
@@ -71,12 +70,22 @@ class ParcelRepository(BaseRepository):
                 
                 geom = None
                 failed_saved = False  # 🔥 DUPLICATE ÖNLENDİ! Flag ekledik
+                savepoint = None
 
                 try:
+                    savepoint = f"sp_{feature.get('fid', 'unknown')}"
+                    # SAVEPOINT için cursor kullanmak gerekiyor
+                    cursor = conn.cursor()
+                    cursor.execute(f"SAVEPOINT {savepoint}")
+                    cursor.close()
+
                     # Gerekli alanları kontrol et
                     if 'fid' not in feature or not feature['fid']:
                         logger.debug("Parsel fid değeri eksik, atlanıyor")
                         skipped_count += 1
+                        cursor = conn.cursor()
+                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                        cursor.close()
                         continue
 
                     # Geometri verilerini oluştur
@@ -99,10 +108,14 @@ class ParcelRepository(BaseRepository):
                         failed_saved = True  # Flag set!
                         
                         skipped_count += 1
+                        cursor = conn.cursor()
+                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                        cursor.close()
                         continue
 
                     # Database INSERT
                     try:
+                        cursor = conn.cursor()
                         cursor.execute("""
                         INSERT INTO tk_parsel (
                             fid, parselno, adano, tapukimlikno, tapucinsaciklama,
@@ -181,6 +194,7 @@ class ParcelRepository(BaseRepository):
                             feature.get('yanilmasiniri'), feature.get('hesapverikalite'),
                             geom
                         ))
+                        cursor.close()
                         saved_count += 1
                         
                         # ✅ OPTIMIZED LOGGING - 10000 log → ~100 log
@@ -189,6 +203,11 @@ class ParcelRepository(BaseRepository):
                     except Exception as e:
                         logger.error(f"Parsel kaydedilirken hata: {e}")
                         logger.debug(f"Hatalı parsel fid: {feature.get('fid', 'N/A')}")
+                        if cursor:
+                            cursor.close()
+                        cursor = conn.cursor()
+                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                        cursor.close()
                         
                         # VERİ KAYBI ÖNLENDİ! (Ama sadece daha önce kaydedilmemişse)
                         if not failed_saved:
@@ -205,6 +224,13 @@ class ParcelRepository(BaseRepository):
                         
                 except Exception as e:
                     logger.debug(f"Parsel işlenirken hata: {e}")
+                    if savepoint:
+                        try:
+                            sp_cursor = conn.cursor()
+                            sp_cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                            sp_cursor.close()
+                        except:
+                            pass
                     
                     # VERİ KAYBI ÖNLENDİ! (Ama sadece daha önce kaydedilmemişse)
                     if not failed_saved:
@@ -232,13 +258,19 @@ class ParcelRepository(BaseRepository):
         except Exception as e:
             logger.error(f"Toplu insert sırasında kritik hata: {e}")
             if conn:
-                conn.rollback()
-                logger.warning("Transaction rollback yapıldı")
+                try:
+                    conn.rollback()
+                    logger.warning("Transaction rollback yapıldı")
+                except Exception as rollback_err:
+                    logger.error(f"Rollback sırasında hata: {rollback_err}")
             raise
         finally:
             # Cleanup
             if cursor:
-                cursor.close()
+                try:
+                    cursor.close()
+                except:
+                    pass
             if conn:
                 self.db.return_connection(conn)
 
@@ -268,7 +300,6 @@ class ParcelRepository(BaseRepository):
         cursor = None
         try:
             conn = self.db.get_connection()
-            cursor = conn.cursor()
 
             for feature_input in features:
                 if MODELS_AVAILABLE and isinstance(feature_input, ParcelFeature):
@@ -278,11 +309,21 @@ class ParcelRepository(BaseRepository):
 
                 geom = None
                 failed_saved = False
+                savepoint = None
 
                 try:
+                    savepoint = f"sp4326_{feature.get('fid', 'unknown')}"
+                    # SAVEPOINT için cursor kullanmak gerekiyor
+                    cursor = conn.cursor()
+                    cursor.execute(f"SAVEPOINT {savepoint}")
+                    cursor.close()
+
                     if 'fid' not in feature or not feature['fid']:
                         logger.debug("Parsel fid değeri eksik, atlanıyor (tk_parsel_4326)")
                         skipped_count += 1
+                        cursor = conn.cursor()
+                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                        cursor.close()
                         continue
 
                     # Orijinal EPSG:4326 WKT kullan
@@ -304,9 +345,13 @@ class ParcelRepository(BaseRepository):
                         )
                         failed_saved = True
                         skipped_count += 1
+                        cursor = conn.cursor()
+                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                        cursor.close()
                         continue
 
                     try:
+                        cursor = conn.cursor()
                         cursor.execute("""
                         INSERT INTO tk_parsel_4326 (
                             fid, parselno, adano, tapukimlikno, tapucinsaciklama,
@@ -385,12 +430,18 @@ class ParcelRepository(BaseRepository):
                             feature.get('yanilmasiniri'), feature.get('hesapverikalite'),
                             geom
                         ))
+                        cursor.close()
                         saved_count += 1
                         batch_logger.log_progress(saved_count)
 
                     except Exception as e:
                         logger.error(f"Parsel 4326 kaydedilirken hata: {e}")
                         logger.debug(f"Hatalı parsel fid (4326): {feature.get('fid', 'N/A')}")
+                        if cursor:
+                            cursor.close()
+                        cursor = conn.cursor()
+                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                        cursor.close()
                         if not failed_saved:
                             self.failed_repo.insert_failed_record(
                                 entity_type='parcel_4326',
@@ -404,6 +455,13 @@ class ParcelRepository(BaseRepository):
 
                 except Exception as e:
                     logger.debug(f"Parsel işlenirken hata (tk_parsel_4326): {e}")
+                    if savepoint:
+                        try:
+                            sp_cursor = conn.cursor()
+                            sp_cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                            sp_cursor.close()
+                        except:
+                            pass
                     if not failed_saved:
                         self.failed_repo.insert_failed_record(
                             entity_type='parcel_4326',
@@ -426,12 +484,18 @@ class ParcelRepository(BaseRepository):
         except Exception as e:
             logger.error(f"Toplu insert sırasında kritik hata (tk_parsel_4326): {e}")
             if conn:
-                conn.rollback()
-                logger.warning("Transaction rollback yapıldı (tk_parsel_4326)")
+                try:
+                    conn.rollback()
+                    logger.warning("Transaction rollback yapıldı (tk_parsel_4326)")
+                except Exception as rollback_err:
+                    logger.error(f"Rollback sırasında hata: {rollback_err}")
             raise
         finally:
             if cursor:
-                cursor.close()
+                try:
+                    cursor.close()
+                except:
+                    pass
             if conn:
                 self.db.return_connection(conn)
 

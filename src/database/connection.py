@@ -1,4 +1,4 @@
-"""PostgreSQL Connection Management with Connection Pooling
+"""PostgreSQL Connection Management with Connection Pool
 
 Bu modül veritabanı bağlantı yönetiminden sorumludur.
 Connection pooling ile performans artışı sağlar.
@@ -10,6 +10,7 @@ from psycopg2.extras import RealDictCursor
 from loguru import logger
 from ..config import settings
 import time
+from contextlib import contextmanager
 
 
 class DatabaseConnection:
@@ -43,8 +44,8 @@ class DatabaseConnection:
         if DatabaseConnection._pool is None:
             try:
                 DatabaseConnection._pool = psycopg2.pool.SimpleConnectionPool(
-                    minconn=2,      # Minimum connections in pool (increased from 1)
-                    maxconn=20,     # Maximum connections in pool (increased from 10)
+                    minconn=2,      # Minimum connections in pool
+                    maxconn=50,     # Increased max connections to handle more load
                     host=self.host,
                     database=self.database,
                     port=self.port,
@@ -54,7 +55,7 @@ class DatabaseConnection:
                     # Connection options for better reliability
                     options="-c statement_timeout=300000 -c idle_in_transaction_session_timeout=180000"
                 )
-                logger.info("Connection pool created (min=2, max=20)")
+                logger.info("Connection pool created (min=2, max=50)")
             except Exception as e:
                 logger.error(f"Connection pool oluşturulamadı: {e}")
                 raise
@@ -76,6 +77,27 @@ class DatabaseConnection:
             return True
         except Exception:
             return False
+
+    @contextmanager
+    def connection(self, max_retries=3):
+        """
+        Context manager to safely get and return a connection from the pool.
+
+        Usage:
+            with db.connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(...)
+
+        Args:
+            max_retries: Maximum number of retries if connection fails (default: 3)
+        """
+        conn = None
+        try:
+            conn = self.get_connection(max_retries=max_retries)
+            yield conn
+        finally:
+            if conn:
+                self.return_connection(conn)
 
     def get_connection(self, max_retries=3):
         """
@@ -124,48 +146,43 @@ class DatabaseConnection:
             conn: psycopg2 connection objesi
         """
         if conn and DatabaseConnection._pool:
-            DatabaseConnection._pool.putconn(conn)
+            try:
+                DatabaseConnection._pool.putconn(conn)
+            except Exception as e:
+                logger.warning(f"Error returning connection to pool: {e}")
     
     def test_connection(self) -> bool:
         """Veritabanı bağlantısını test et"""
-        conn = None
         try:
-            conn = self.get_connection()
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT version();")
-                version = cursor.fetchone()
-                logger.info(f"Veritabanı bağlantısı başarılı (pool): {version['version']}")
+            with self.connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT version();")
+                    version = cursor.fetchone()
+                    logger.info(f"Veritabanı bağlantısı başarılı (pool): {version['version']}")
             return True
         except Exception as e:
             logger.error(f"Veritabanı bağlantı testi başarısız: {e}")
             return False
-        finally:
-            if conn:
-                self.return_connection(conn)
     
     def check_postgis_extension(self) -> bool:
         """PostGIS uzantısının yüklü olup ol madığını kontrol et"""
-        conn = None
         try:
-            conn = self.get_connection()
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    SELECT EXISTS(
-                        SELECT 1 FROM pg_extension WHERE extname = 'postgis'
-                    );
-                """)
-                exists = cursor.fetchone()['exists']
-                if exists:
-                    logger.info("PostGIS uzantısı mevcut")
-                else:
-                    logger.warning("PostGIS uzantısı bulunamadı")
-                return exists
+            with self.connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT EXISTS(
+                            SELECT 1 FROM pg_extension WHERE extname = 'postgis'
+                        );
+                    """)
+                    exists = cursor.fetchone()['exists']
+                    if exists:
+                        logger.info("PostGIS uzantısı mevcut")
+                    else:
+                        logger.warning("PostGIS uzantısı bulunamadı")
+                    return exists
         except Exception as e:
             logger.error(f"PostGIS kontrolü sırasında hata: {e}")
             return False
-        finally:
-            if conn:
-                self.return_connection(conn)
     
     @classmethod
     def close_all_connections(cls):

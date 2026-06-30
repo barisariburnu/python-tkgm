@@ -40,8 +40,8 @@ class SchemaManager:
             CREATE TABLE IF NOT EXISTS tk_parsel (
                 id SERIAL PRIMARY KEY,
                 fid BIGINT,
-                parselno BIGINT,
-                adano BIGINT,
+                parselno VARCHAR(50),
+                adano VARCHAR(50),
                 tapukimlikno BIGINT,
                 tapucinsaciklama TEXT,
                 tapuzeminref BIGINT,
@@ -81,6 +81,9 @@ class SchemaManager:
             );
         """)
         
+        # Mevcut tabloda parselno/adano BIGINT ise VARCHAR'a çevir
+        self._migrate_parcelno_adano_to_varchar(cursor, 'tk_parsel')
+        
         # İndeksler
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_geom ON tk_parsel USING GIST (geom);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_tapukimlikno ON tk_parsel (tapukimlikno);")
@@ -88,14 +91,38 @@ class SchemaManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_adano ON tk_parsel (adano);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_sistemkayittarihi ON tk_parsel (sistemkayittarihi);")
 
+    def _migrate_parcelno_adano_to_varchar(self, cursor, table_name: str):
+        """Mevcut tabloda parselno/adano sütunlarını BIGINT'ten VARCHAR'a çevir"""
+        for column in ('parselno', 'adano'):
+            # Mevcut veri tipini kontrol et
+            cursor.execute("""
+                SELECT data_type 
+                FROM information_schema.columns 
+                WHERE table_name = %s AND column_name = %s
+            """, (table_name, column))
+            row = cursor.fetchone()
+            if not row:
+                continue
+            current_type = row['data_type']
+            # BIGINT, INTEGER, SMALLINT ise VARCHAR'a çevir
+            if current_type in ('bigint', 'integer', 'smallint'):
+                logger.info(f"  {table_name}.{column}: {current_type} -> VARCHAR(50) dönüşümü yapılıyor...")
+                cursor.execute(f'ALTER TABLE {table_name} ALTER COLUMN {column} TYPE VARCHAR(50) USING {column}::VARCHAR;')
+                logger.info(f"  {table_name}.{column} başarıyla VARCHAR(50) yapıldı.")
+            elif current_type == 'character varying':
+                # Zaten VARCHAR ise bir şey yapma
+                pass
+            else:
+                logger.warning(f"  {table_name}.{column} beklenmeyen veri tipi: {current_type}")
+
     def _create_parsel_4326_table(self, cursor):
         """tk_parsel_4326 tablosunu oluştur - Servisten gelen orijinal EPSG:4326 (WGS84) verileri için"""
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tk_parsel_4326 (
                 id SERIAL PRIMARY KEY,
                 fid BIGINT,
-                parselno BIGINT,
-                adano BIGINT,
+                parselno VARCHAR(50),
+                adano VARCHAR(50),
                 tapukimlikno BIGINT,
                 tapucinsaciklama TEXT,
                 tapuzeminref BIGINT,
@@ -134,6 +161,9 @@ class SchemaManager:
                 UNIQUE(tapukimlikno, tapuzeminref)
             );
         """)
+
+        # Mevcut tabloda parselno/adano BIGINT ise VARCHAR'a çevir
+        self._migrate_parcelno_adano_to_varchar(cursor, 'tk_parsel_4326')
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_4326_geom ON tk_parsel_4326 USING GIST (geom);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tk_parsel_4326_tapukimlikno ON tk_parsel_4326 (tapukimlikno);")
