@@ -1,17 +1,23 @@
 """
 TKGM WFS Servis İstemci Modülü
 WFS 1.0.0 uyumlu servis ile etkileşim, kimlik doğrulama ve sayfalandırma
+
+Production-grade: SSL doğrulama, connection pooling, kısa timeout,
+hassas veri maskeleme, exponential backoff retry.
 """
 
 import time
 import requests
+from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
+from urllib3.util.retry import Retry
 from typing import Optional, Dict
 from urllib.parse import urlencode, quote
 from datetime import datetime
 from loguru import logger
 
 from .config import settings
+from .security import mask_sensitive_data
 
 
 class TKGMClient:
@@ -31,21 +37,44 @@ class TKGMClient:
         
         # DatabaseManager referansı (loglama için)
         self.db = db_manager
-        
-        # HTTP oturum ayarları
+
+        # HTTP oturum ayarları - production-grade
         self.session = requests.Session()
+        # SSL sertifika doğrulaması açık (varsayılan), dev ortamı için
+        # SSLVERIFY=false env ile kapatılabilir
+        self.session.verify = bool(getattr(settings, "SSL_VERIFY", True))
         self.session.auth = HTTPBasicAuth(self.username, self.password)
         self.session.headers.update({
             'User-Agent': 'TKGM-Python-Client/1.0',
-            'Accept': 'application/xml, text/xml'
+            'Accept': 'application/xml, text/xml',
+            'Accept-Encoding': 'gzip, deflate',
         })
-        
+
+        # Connection pooling + urllib3-level retry (status 5xx ve bağlantı hataları)
+        retry_strategy = Retry(
+            total=0,  # Manuel retry yapacağımız için urllib3 retry kapalı
+            connect=0,
+            read=0,
+            status=0,
+            backoff_factor=0,
+        )
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=10,
+            pool_maxsize=20,
+        )
+        self.session.mount('https://', adapter)
+        self.session.mount('http://', adapter)
+
         # Timeout ve retry ayarları
-        self.timeout: int = 300  # 5 dakika
+        # (connect_timeout, read_timeout) tuple'ı olarak ayarlanabilir
+        connect_timeout = int(getattr(settings, "TKGM_CONNECT_TIMEOUT", 30))
+        read_timeout = int(getattr(settings, "TKGM_READ_TIMEOUT", 300))
+        self.timeout: tuple = (connect_timeout, read_timeout)
         self.running: bool = True
-        self.retry_delay: int = 5  # saniye
-        self.max_retries: int = 10  # maksimum deneme sayısı
-        
+        self.retry_delay: int = int(getattr(settings, "RETRY_DELAY", 5))
+        self.max_retries: int = int(getattr(settings, "MAX_RETRIES", 10))
+
         logger.info("TKGM İstemci başlatıldı")
     
 
@@ -106,11 +135,12 @@ class TKGMClient:
         return params
 
 
-    def fetch_features(self, start_index: int = 0, cql_filter: str = None) -> Optional[Dict]:
-        """WFS servisinden özellikleri çek"""
+    def fetch_features(self, start_index: int = 0, cql_filter: str = None) -> Optional[str]:
+        """WFS servisinden özellikleri çek (XML içerik)."""
         params = self._build_request_params(start_index, cql_filter)
         url = f"{self.base_url}?{urlencode(params, quote_via=quote)}"
-        logger.info(f"Request URL: {url}")
+        # URL'yi loglarken olası hassas parametreleri maskele
+        logger.info(f"Request URL: {mask_sensitive_data(url)}")
     
         metadata = {
             'request_url': url,

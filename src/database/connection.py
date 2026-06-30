@@ -43,19 +43,36 @@ class DatabaseConnection:
         # Initialize connection pool if not already created
         if DatabaseConnection._pool is None:
             try:
+                # SSL mode (production için), PGSSLMODE env ile override edilebilir
+                ssl_mode = getattr(settings, "POSTGRES_SSLMODE", None)
+                connect_args: dict = {
+                    "host": self.host,
+                    "database": self.database,
+                    "port": self.port,
+                    "user": self.user,
+                    "password": self.password,
+                    "cursor_factory": RealDictCursor,
+                    # Connection options for better reliability
+                    "options": (
+                        "-c statement_timeout=300000 "
+                        "-c idle_in_transaction_session_timeout=180000 "
+                        "-c lock_timeout=60000"
+                    ),
+                    "connect_timeout": 10,
+                    "application_name": "python-tkgm-scraper",
+                }
+                if ssl_mode:
+                    connect_args["sslmode"] = ssl_mode
+
                 DatabaseConnection._pool = psycopg2.pool.SimpleConnectionPool(
                     minconn=2,      # Minimum connections in pool
                     maxconn=50,     # Increased max connections to handle more load
-                    host=self.host,
-                    database=self.database,
-                    port=self.port,
-                    user=self.user,
-                    password=self.password,
-                    cursor_factory=RealDictCursor,
-                    # Connection options for better reliability
-                    options="-c statement_timeout=300000 -c idle_in_transaction_session_timeout=180000"
+                    **connect_args,
                 )
-                logger.info("Connection pool created (min=2, max=50)")
+                logger.info(
+                    f"Connection pool created (min=2, max=50, "
+                    f"ssl={ssl_mode or 'default'})"
+                )
             except Exception as e:
                 logger.error(f"Connection pool oluşturulamadı: {e}")
                 raise

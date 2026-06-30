@@ -17,6 +17,7 @@ from src.client import TKGMClient
 from .database import DatabaseManager
 from .database.repositories import SettingsRepository
 from .geometry import WFSGeometryProcessor
+from .security import SensitiveDataDataFilter
 from src.config import settings
 
 
@@ -44,56 +45,104 @@ class TKGMScraper:
     
 
     def _setup_logging(self):
-        """Loglama sistemini ayarla"""
+        """Loglama sistemini ayarla - production-grade (rotation, retention, secret maskeleme)"""
         log_level = settings.LOG_LEVEL
         log_file = settings.LOG_FILE
-        
+
         # Log dizinini oluştur
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        
+
         # --- Self-Cleanup (FIFO) ---
+        # Çok büyümesini engellemek için başlangıç temizliği
         try:
             if os.path.exists(log_file):
                 file_size = os.path.getsize(log_file)
                 max_size = 100 * 1024 * 1024  # 100 MB
                 keep_size = 50 * 1024 * 1024  # 50 MB
-                
+
                 if file_size > max_size:
-                    print(f"Log dosyası boyutu sınırı aştı ({file_size/1024/1024:.2f} MB). Temizleniyor...")
-                    
+                    print(
+                        f"Log dosyası boyutu sınırı aştı "
+                        f"({file_size/1024/1024:.2f} MB). Temizleniyor..."
+                    )
+
                     # Son keep_size kadar veriyi oku
                     with open(log_file, 'rb') as f:
                         f.seek(-keep_size, 2)  # Sondan geriye git
                         data = f.read()
-                    
+
                     # Dosyayı yeniden yaz
                     with open(log_file, 'wb') as f:
                         f.write(data)
-                        f.write(f"\n[CLEANUP] Log file truncated. Kept last {keep_size/1024/1024:.2f} MB.\n".encode('utf-8'))
-                    
+                        f.write(
+                            f"\n[CLEANUP] Log file truncated. "
+                            f"Kept last {keep_size/1024/1024:.2f} MB.\n".encode('utf-8')
+                        )
+
                     print("Log dosyası temizlendi.")
         except Exception as e:
             print(f"Log temizleme hatası: {e}")
         # ---------------------------
-        
+
         # Mevcut logları temizle
         logger.remove()
-        
-        # Konsol loglama
+
+        # Hassas veri maskeleme filtresi
+        secret_filter = SensitiveDataDataFilter()
+
+        # Konsol loglama (renksiz, sadece seviye + mesaj)
         logger.add(
             sys.stdout,
             level=log_level,
-            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+            format=(
+                "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+                "<level>{level: <8}</level> | "
+                "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+                "<level>{message}</level>"
+            ),
+            filter=secret_filter,
         )
-        
-        # Dosya loglama
+
+        # Dosya loglama - production-grade rotation
         logger.add(
             log_file,
             level=log_level,
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
+            format=(
+                "{time:YYYY-MM-DD HH:mm:ss} | "
+                "{level: <8} | {name}:{function}:{line} - {message}"
+            ),
+            rotation="50 MB",          # 50 MB'da bir rotation
+            retention="30 days",      # 30 günden eski log'ları otomatik sil
+            compression="zip",        # Eski log'ları zip'le (disk tasarrufu)
+            encoding="utf-8",
+            enqueue=True,             # Thread-safe (multiprocessing için)
+            filter=secret_filter,
         )
-        
-        logger.info(f"Loglama sistemi ayarlandı: {log_level} seviyesi, dosya: {log_file}")
+
+        # Hata logu ayrı dosyada (production monitoring için kritik)
+        error_log_file = log_file.replace(".log", ".errors.log")
+        logger.add(
+            error_log_file,
+            level="ERROR",
+            format=(
+                "{time:YYYY-MM-DD HH:mm:ss} | "
+                "{level: <8} | {name}:{function}:{line} - {message}\n"
+                "{exception}"
+            ),
+            rotation="20 MB",
+            retention="90 days",
+            compression="zip",
+            encoding="utf-8",
+            backtrace=True,
+            diagnose=True,
+            enqueue=True,
+            filter=secret_filter,
+        )
+
+        logger.info(
+            f"Loglama sistemi ayarlandı: {log_level} seviyesi, "
+            f"dosya: {log_file}, hata logu: {error_log_file}"
+        )
 
 
     def _initialize_components(self):
@@ -139,7 +188,8 @@ class TKGMScraper:
             if hasattr(self, 'client') and self.client:
                 self.client.running = False
                 try:
-                    self.client.timeout = 1  # sonraki denemelerde hızlı zaman aşımı
+                    # tuple timeout desteği (connect, read)
+                    self.client.timeout = (1, 1)  # sonraki denemelerde hızlı zaman aşımı
                     self.client.session.close()
                 except Exception:
                     pass

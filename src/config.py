@@ -51,10 +51,24 @@ class Settings(BaseSettings):
     MAX_RETRIES: int = Field(default=10, ge=1, le=20, description="Max retry attempts")
     RETRY_DELAY: int = Field(default=30, ge=1, le=300, description="Retry delay in seconds")
     CUTOFF_DATE: str = Field(default="2025-10-09", description="Cutoff date for full sync")
-    
+
+    # HTTP / TKGM Client - production timeouts
+    TKGM_CONNECT_TIMEOUT: int = Field(default=30, ge=1, le=120, description="TKGM connect timeout (s)")
+    TKGM_READ_TIMEOUT: int = Field(default=300, ge=1, le=1800, description="TKGM read timeout (s)")
+    SSL_VERIFY: bool = Field(default=True, description="Verify SSL certificates for TKGM service")
+
     # Logging Configuration
     LOG_LEVEL: str = Field(default="INFO", description="Log level")
     LOG_FILE: str = Field(default="logs/scraper.log", description="Log file path")
+
+    # Database - SSL mode (production)
+    POSTGRES_SSLMODE: Optional[str] = Field(
+        default=None,
+        description=(
+            "PostgreSQL SSL mode: disable, allow, prefer, require, "
+            "verify-ca, verify-full. None = server default."
+        ),
+    )
 
     # Telegram Notification (Optional)
     TELEGRAM_BOT_TOKEN: Optional[str] = Field(default=None, description="Telegram bot token")
