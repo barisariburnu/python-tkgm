@@ -142,8 +142,9 @@ COPY . /app/
 RUN sed -i 's/\r$//' /app/scripts/sync-oracle.sh \
     && sed -i 's/\r$//' /app/scripts/sync-postgresql.sh \
     && sed -i 's/\r$//' /app/scripts/sync-postgresql-kadastro-yeni.sh \
+    && sed -i 's/\r$//' /app/scripts/sync-postgresql-4326.sh \
     && sed -i 's/\r$//' /app/entrypoint.sh \
-    && chmod +x /app/scripts/sync-oracle.sh /app/scripts/sync-postgresql.sh /app/scripts/sync-postgresql-kadastro-yeni.sh /app/entrypoint.sh
+    && chmod +x /app/scripts/sync-oracle.sh /app/scripts/sync-postgresql.sh /app/scripts/sync-postgresql-kadastro-yeni.sh /app/scripts/sync-postgresql-4326.sh /app/entrypoint.sh
 
 # Entrypoint'i root'a kopyala
 RUN cp /app/entrypoint.sh /entrypoint.sh && chmod +x /entrypoint.sh
